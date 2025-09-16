@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Organizer AI",
+  "version": "1.0.0",
+  "description": "Organize the current Chrome window's tabs with OpenAI-powered clustering and smart deduping.",
+  "action": {
+    "default_title": "Organize Tabs",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "service_worker.js",
+    "type": "module"
+  },
+  "options_page": "options.html",
+  "permissions": [
+    "storage",
+    "tabs",
+    "tabGroups"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ]
+}

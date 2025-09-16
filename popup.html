@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tab Organizer AI</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Organize tabs</h1>
+      <form id="organize-form">
+        <label for="organize-input">Tell me how to organize</label>
+        <textarea
+          id="organize-input"
+          name="prompt"
+          rows="4"
+          placeholder="e.g., Group by project and close social media duplicates"
+        ></textarea>
+        <button type="submit" id="organize-button">Organize</button>
+      </form>
+      <section id="preview" hidden>
+        <h2>Planned changes</h2>
+        <div id="preview-content"></div>
+      </section>
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
