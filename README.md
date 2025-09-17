@@ -57,6 +57,15 @@ A minimal, production-ready Chrome extension (Manifest V3) that uses your own Op
 
 - When dry-run is enabled the popup renders the planned duplicates and tab groups so you can confirm before applying.
 
+## No-LLM advanced logic
+
+- URLs are aggressively canonicalized before dedupe: protocols are normalized to HTTPS, tracking parameters such as `utm_*`, `gclid`, and `fbclid` are removed, and service-specific identifiers (GitHub repos, Google Docs IDs, YouTube video IDs, Jira tickets, etc.) are preserved so near-duplicates collapse reliably.
+- A deterministic catalog of 200+ rule entries covers popular developer, productivity, communication, shopping, travel, finance, and media sites. Each rule can supply priority, optional Chrome tab-group color, and detailed matching on host/path/title so GitHub PRs, Jira boards, Slack channels, Google Drive folders, airline reservations, and more fall into distinct groups without ML.
+- Tabs that slip past the catalog are scored using keyword tokens extracted from title, host, and path. Lightweight stemming and stop-word filtering power category detection (e.g., "CI/CD", "Observability", "Docs", "News", "Finance"), and the best match is used to generate a descriptive group label.
+- Anything still unmatched is organized by eTLD+1 into "By Domain" groups, ensuring fewer than 5% of tabs fall back to generic buckets.
+- Custom rules from the Options page are merged ahead of the built-in catalog. Patterns accept strings or regular expressions and can optionally provide Chrome tab group colors.
+- All decisions respect pinned tabs and maximum tabs per group, and the dry-run response surfaces both dedupe candidates and final group summaries so you can review before applying.
+
 ## Permissions rationale
 
 - `storage`: save your API key, model, and organization preferences.
