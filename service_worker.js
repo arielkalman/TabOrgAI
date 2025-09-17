@@ -31,6 +31,67 @@ const DEFAULT_SYNC_SETTINGS = {
 
 let lastCompletionTimestamp = 0;
 const previewPlans = new Map();
+const ACTION_ICON_SIZES = [16, 32, 48, 128];
+
+initializeActionIcon();
+chrome.runtime.onInstalled.addListener(() => {
+  initializeActionIcon();
+});
+chrome.runtime.onStartup.addListener(() => {
+  initializeActionIcon();
+});
+
+async function initializeActionIcon() {
+  if (!chrome.action || typeof chrome.action.setIcon !== 'function') {
+    return;
+  }
+
+  if (typeof OffscreenCanvas !== 'function' || typeof createImageBitmap !== 'function') {
+    console.warn('[Tab Organizer AI] OffscreenCanvas is unavailable; skipping toolbar icon setup.');
+    return;
+  }
+
+  try {
+    const response = await fetch(chrome.runtime.getURL('TabOrgAI.png'));
+    if (!response.ok) {
+      throw new Error(`Failed to load logo asset (${response.status})`);
+    }
+
+    const logoBitmap = await createImageBitmap(await response.blob());
+    const cropSize = Math.min(logoBitmap.width, logoBitmap.height);
+    const cropX = (logoBitmap.width - cropSize) / 2;
+    const cropY = (logoBitmap.height - cropSize) / 2;
+    const imageData = {};
+
+    for (const size of ACTION_ICON_SIZES) {
+      const canvas = new OffscreenCanvas(size, size);
+      const context = canvas.getContext('2d');
+      if (!context) {
+        continue;
+      }
+
+      context.clearRect(0, 0, size, size);
+      context.drawImage(
+        logoBitmap,
+        cropX,
+        cropY,
+        cropSize,
+        cropSize,
+        0,
+        0,
+        size,
+        size
+      );
+
+      imageData[size] = context.getImageData(0, 0, size, size);
+    }
+
+    logoBitmap.close();
+    await chrome.action.setIcon({ imageData });
+  } catch (error) {
+    console.error('[Tab Organizer AI] Failed to set toolbar icon', error);
+  }
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || !message.type) {
