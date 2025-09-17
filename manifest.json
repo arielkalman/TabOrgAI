@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Organize the current Chrome window's tabs with OpenAI-powered clustering and smart deduping.",
   "icons": {
-    "128": "TabOrgAI.png"
+    "128": "logo.png"
   },
   "action": {
     "default_title": "Organize Tabs",
