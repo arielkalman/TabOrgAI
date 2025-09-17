@@ -68,6 +68,13 @@ body::before {
   transform: translateY(-2px);
 }
 
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .panel-header h1 {
   margin: 0;
   font-size: 1.35rem;
@@ -75,10 +82,49 @@ body::before {
   letter-spacing: -0.01em;
 }
 
+.settings-button {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 10px 18px rgba(15, 23, 42, 0.08);
+  transition: transform 200ms ease, box-shadow 200ms ease, background 200ms ease;
+}
+
+.settings-button:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 14px 26px rgba(15, 23, 42, 0.12);
+}
+
+.settings-button:active {
+  transform: translateY(0);
+}
+
+.settings-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9), 0 0 0 5px rgba(99, 102, 241, 0.35);
+}
+
 .organize-form {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
+}
+
+.llm-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .field {
@@ -126,24 +172,120 @@ textarea:disabled {
   opacity: 0.6;
 }
 
-.button-row {
+.primary-actions {
   display: flex;
   flex-wrap: wrap;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.primary-actions .glass-button {
+  flex: 1 1 160px;
+}
+
+.primary-actions #close-duplicates {
+  flex: 0 1 auto;
+  min-width: 150px;
+}
+
+.nolllm-section {
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.nolllm-section .glass-button {
+  width: 100%;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
+}
+
+.toggle-row .toggle-control {
+  flex: 1;
+}
+
+.tooltip-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tooltip-trigger {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 10px 18px rgba(15, 23, 42, 0.12);
+  cursor: help;
+  transition: transform 200ms ease, box-shadow 200ms ease, background 200ms ease;
+}
+
+.tooltip-trigger:hover,
+.tooltip-container:focus-within .tooltip-trigger {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 14px 26px rgba(15, 23, 42, 0.16);
+}
+
+.tooltip-trigger:active {
+  transform: translateY(0);
+}
+
+.tooltip-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9), 0 0 0 5px rgba(99, 102, 241, 0.35);
+}
+
+.tooltip-bubble {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 220px;
+  max-width: 70vw;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #f8fafc;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.25);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 2;
+}
+
+.tooltip-container:hover .tooltip-bubble,
+.tooltip-container:focus-within .tooltip-bubble {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .glass-button {
   appearance: none;
   border: none;
   border-radius: 999px;
-  padding: 12px 20px;
-  font-size: 0.97rem;
+  padding: 10px 18px;
+  font-size: 0.9rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   color: #ffffff;
   cursor: pointer;
-  flex: 1 1 150px;
-  min-height: 44px;
+  flex: 1 1 140px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -339,8 +481,27 @@ textarea:disabled {
     padding: 22px 18px 24px;
   }
 
-  .button-row {
+  .primary-actions {
     flex-direction: column;
+  }
+
+  .primary-actions .glass-button,
+  .nolllm-section .glass-button {
+    width: 100%;
+  }
+
+  .primary-actions #close-duplicates {
+    min-width: 0;
+  }
+
+  .toggle-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .tooltip-container {
+    align-self: flex-start;
   }
 }
 
