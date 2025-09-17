@@ -10,29 +10,49 @@
     <main class="glass-panel">
       <header class="panel-header">
         <h1>Organize tabs</h1>
+        <button type="button" id="open-settings" class="settings-button">⚙ Settings</button>
       </header>
       <form id="organize-form" class="organize-form">
-        <div class="field">
-          <label for="organize-input">Tell me how to organize</label>
-          <textarea
-            id="organize-input"
-            name="prompt"
-            rows="4"
-            placeholder="e.g., Group by project and close social media duplicates"
-          ></textarea>
+        <div class="llm-section">
+          <div class="field">
+            <label for="organize-input">Tell me how to organize</label>
+            <textarea
+              id="organize-input"
+              name="prompt"
+              rows="4"
+              placeholder="e.g., Group by project and close social media duplicates"
+            ></textarea>
+          </div>
+          <div class="primary-actions">
+            <button type="submit" id="organize-llm" class="glass-button accent">Organize (LLM)</button>
+            <button type="button" id="close-duplicates" class="glass-button danger">Close duplicates</button>
+          </div>
         </div>
-        <div class="button-row">
-          <button type="submit" id="organize-llm" class="glass-button accent">Organize (LLM)</button>
+        <div class="nolllm-section">
           <button type="button" id="organize-nollm" class="glass-button outline">Organize (No-LLM)</button>
-          <button type="button" id="close-duplicates" class="glass-button danger">Close duplicates</button>
         </div>
-        <label class="toggle-control" for="dryRunNoLLM">
-          <input type="checkbox" id="dryRunNoLLM" name="dryRunNoLLM" />
-          <span class="toggle-track" aria-hidden="true">
-            <span class="toggle-thumb"></span>
-          </span>
-          <span class="toggle-label">Dry-run (No-LLM)</span>
-        </label>
+        <div class="toggle-row">
+          <label class="toggle-control" for="dryRunNoLLM">
+            <input type="checkbox" id="dryRunNoLLM" name="dryRunNoLLM" />
+            <span class="toggle-track" aria-hidden="true">
+              <span class="toggle-thumb"></span>
+            </span>
+            <span class="toggle-label">Dry-run (No-LLM)</span>
+          </label>
+          <div class="tooltip-container">
+            <button
+              type="button"
+              class="tooltip-trigger"
+              aria-label="Learn about dry-run"
+              aria-describedby="dry-run-tooltip"
+            >
+              ?
+            </button>
+            <div id="dry-run-tooltip" class="tooltip-bubble" role="tooltip">
+              Dry-run shows you what would happen without actually closing or grouping tabs.
+            </div>
+          </div>
+        </div>
       </form>
       <section id="preview" class="preview-panel" hidden>
         <h2>Planned changes</h2>

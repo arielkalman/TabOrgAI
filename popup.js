@@ -3,6 +3,7 @@ const textarea = document.getElementById('organize-input');
 const llmButton = document.getElementById('organize-llm');
 const noLlmButton = document.getElementById('organize-nollm');
 const closeDuplicatesButton = document.getElementById('close-duplicates');
+const settingsButton = document.getElementById('open-settings');
 const dryRunNoLlmCheckbox = document.getElementById('dryRunNoLLM');
 const statusEl = document.getElementById('status');
 const previewSection = document.getElementById('preview');
@@ -15,6 +16,16 @@ let cachedUserRules = '';
 let llmDryRunPreference = false;
 
 initializePopup();
+
+if (settingsButton) {
+  settingsButton.addEventListener('click', () => {
+    if (chrome.runtime.openOptionsPage) {
+      chrome.runtime.openOptionsPage();
+    } else {
+      window.open(chrome.runtime.getURL('options.html'));
+    }
+  });
+}
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
