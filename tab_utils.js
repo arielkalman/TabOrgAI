@@ -17,6 +17,18 @@ const VALID_GROUP_COLORS = new Set([
   'orange'
 ]);
 
+const DEFAULT_COLOR_SEQUENCE = Object.freeze([
+  'blue',
+  'red',
+  'yellow',
+  'green',
+  'pink',
+  'purple',
+  'cyan',
+  'orange',
+  'grey'
+]);
+
 const TRACKING_PARAM_PREFIXES = ['utm_', 'vero_', 'mc_'];
 const TRACKING_PARAM_NAMES = new Set([
   'gclid',
@@ -589,6 +601,70 @@ function sanitizeGroupColor(value) {
   if (typeof value !== 'string') return null;
   const normalized = value.trim().toLowerCase();
   return VALID_GROUP_COLORS.has(normalized) ? normalized : null;
+}
+
+/**
+ * Ensure every group in the provided collection has a unique, valid color.
+ * @template T
+ * @param {Array<T & { color?: string|null }>} groups
+ * @param {{ palette?: string[] }} [options]
+ * @returns {Array<T & { color?: string|null }>}
+ */
+export function assignUniqueGroupColors(groups, options = {}) {
+  if (!Array.isArray(groups) || groups.length === 0) {
+    return Array.isArray(groups) ? groups : [];
+  }
+
+  const paletteSource = Array.isArray(options.palette) && options.palette.length
+    ? options.palette
+    : DEFAULT_COLOR_SEQUENCE;
+
+  const palette = [];
+  const paletteSeen = new Set();
+  for (const candidate of paletteSource) {
+    const normalized = sanitizeGroupColor(candidate);
+    if (normalized && !paletteSeen.has(normalized)) {
+      palette.push(normalized);
+      paletteSeen.add(normalized);
+    }
+  }
+
+  const assigned = new Array(groups.length).fill(null);
+  const usedColors = new Set();
+
+  for (let i = 0; i < groups.length; i += 1) {
+    const group = groups[i];
+    if (!group || typeof group !== 'object') continue;
+    const normalized = sanitizeGroupColor(group.color);
+    if (normalized && !usedColors.has(normalized)) {
+      assigned[i] = normalized;
+      usedColors.add(normalized);
+    }
+  }
+
+  let paletteIndex = 0;
+  for (let i = 0; i < groups.length; i += 1) {
+    if (assigned[i]) continue;
+    while (paletteIndex < palette.length && usedColors.has(palette[paletteIndex])) {
+      paletteIndex += 1;
+    }
+    if (paletteIndex < palette.length) {
+      const nextColor = palette[paletteIndex];
+      assigned[i] = nextColor;
+      usedColors.add(nextColor);
+      paletteIndex += 1;
+    } else {
+      assigned[i] = null;
+    }
+  }
+
+  for (let i = 0; i < groups.length; i += 1) {
+    const group = groups[i];
+    if (!group || typeof group !== 'object') continue;
+    group.color = assigned[i];
+  }
+
+  return groups;
 }
 
 /**

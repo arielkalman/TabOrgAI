@@ -7,7 +7,8 @@ import {
   extractDomain,
   dedupeTabs,
   groupByRules,
-  parseUserRulesJSON
+  parseUserRulesJSON,
+  assignUniqueGroupColors
 } from './tab_utils.js';
 
 const RATE_LIMIT_INTERVAL_MS = 5000;
@@ -158,6 +159,8 @@ async function handleOrganizeTabsNoLLM(message) {
     };
   });
 
+  assignUniqueGroupColors(groupingArray);
+
   const summary = groupingArray.map((group) => ({ name: group.name, count: group.tabIds.length, color: group.color }));
   const closedPlanned = dedupePlan.tabsToClose.filter((item) => typeof item.id === 'number');
   const statusMessage = buildNoLlmStatus({
@@ -293,7 +296,11 @@ async function applyPlan(plan) {
   const plannedAssignments = [];
   const assignedTabs = new Set();
 
-  for (const group of grouping.groups) {
+  const colorizedGroups = assignUniqueGroupColors(
+    grouping.groups.map((group) => ({ ...group }))
+  );
+
+  for (const group of colorizedGroups) {
     const ids = [];
     for (const tabId of group.tabIds) {
       if (assignedTabs.has(tabId)) continue;
@@ -306,8 +313,12 @@ async function applyPlan(plan) {
     if (!ids.length) continue;
     try {
       const groupId = await chrome.tabs.group({ tabIds: ids });
-      await chrome.tabGroups.update(groupId, { title: group.name });
-      plannedAssignments.push({ groupId, name: group.name, tabIds: ids });
+      const updatePayload = { title: group.name };
+      if (group.color) {
+        updatePayload.color = group.color;
+      }
+      await chrome.tabGroups.update(groupId, updatePayload);
+      plannedAssignments.push({ groupId, name: group.name, tabIds: ids, color: group.color || null });
     } catch (error) {
       console.warn('Failed to apply tab group', group, error);
     }
@@ -351,6 +362,8 @@ async function applyNoLlmPlan(windowId, dedupePlan, groupingArray, options = {})
   const currentTabs = await chrome.tabs.query({ windowId });
   const tabMap = new Map(currentTabs.map((tab) => [tab.id, tab]));
 
+  assignUniqueGroupColors(groupingArray);
+
   const removalIds = [];
   for (const item of dedupePlan.tabsToClose) {
     const tab = tabMap.get(item.id);
@@ -389,7 +402,7 @@ async function applyNoLlmPlan(windowId, dedupePlan, groupingArray, options = {})
       }
       await chrome.tabGroups.update(groupId, updatePayload);
       candidateIds.forEach((id) => assigned.add(id));
-      appliedGroups.push({ name: group.name, count: candidateIds.length });
+      appliedGroups.push({ name: group.name, count: candidateIds.length, color: group.color || null });
     } catch (error) {
       console.warn('Failed to apply deterministic group', group, error);
     }
