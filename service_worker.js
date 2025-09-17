@@ -57,6 +57,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'CLOSE_DUPLICATE_TABS') {
+    handleCloseDuplicateTabs()
+      .then((result) => sendResponse(result))
+      .catch((error) => {
+        console.error('[Tab Organizer AI] close duplicates error', error);
+        sendResponse({ success: false, error: error.message || 'Unexpected error' });
+      });
+    return true;
+  }
+
   return false;
 });
 
@@ -210,6 +220,50 @@ async function handleOrganizeTabsNoLLM(message) {
     groups: applyResult.groups,
     message: messageAfterApply
   };
+}
+
+/**
+ * Close duplicate tabs immediately using deterministic dedupe rules.
+ */
+async function handleCloseDuplicateTabs() {
+  const preferences = await loadPreferences();
+  const { windowId, tabs } = await fetchCurrentWindowTabs();
+
+  if (!tabs.length) {
+    throw new Error('No tabs were found in the current window.');
+  }
+
+  const dedupePlan = computeDedupePlan(tabs, {
+    preservePinned: preferences.preservePinned !== false,
+    keepAtLeastOnePerDomain: preferences.keepAtLeastOnePerDomain !== false
+  });
+
+  const allRemovalIds = dedupePlan.tabsToClose
+    .map((item) => item && typeof item.id === 'number' ? item.id : null)
+    .filter((id) => typeof id === 'number');
+
+  if (!allRemovalIds.length) {
+    return { success: true, closed: 0, message: 'No duplicate tabs detected.' };
+  }
+
+  const currentTabs = await chrome.tabs.query({ windowId });
+  const currentIds = new Set(currentTabs.map((tab) => tab.id));
+  const removalIds = allRemovalIds.filter((id) => currentIds.has(id));
+
+  if (!removalIds.length) {
+    return { success: true, closed: 0, message: 'No duplicate tabs detected.' };
+  }
+
+  try {
+    await chrome.tabs.remove(removalIds);
+  } catch (error) {
+    console.warn('Failed to remove duplicate tabs', error);
+    throw new Error('Unable to close duplicate tabs.');
+  }
+
+  const closedCount = removalIds.length;
+  const message = `Closed ${closedCount} duplicate tab${closedCount === 1 ? '' : 's'}.`;
+  return { success: true, closed: closedCount, message };
 }
 
 /**

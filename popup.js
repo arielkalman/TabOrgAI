@@ -2,6 +2,7 @@ const form = document.getElementById('organize-form');
 const textarea = document.getElementById('organize-input');
 const llmButton = document.getElementById('organize-llm');
 const noLlmButton = document.getElementById('organize-nollm');
+const closeDuplicatesButton = document.getElementById('close-duplicates');
 const dryRunNoLlmCheckbox = document.getElementById('dryRunNoLLM');
 const statusEl = document.getElementById('status');
 const previewSection = document.getElementById('preview');
@@ -118,6 +119,30 @@ noLlmButton.addEventListener('click', async () => {
   }
 });
 
+closeDuplicatesButton.addEventListener('click', async () => {
+  resetPreview();
+  setCloseDuplicatesWorkingState(true);
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'CLOSE_DUPLICATE_TABS' });
+
+    if (!response) {
+      throw new Error('No response from background script.');
+    }
+
+    if (!response.success) {
+      throw new Error(response.error || 'Unable to close duplicate tabs.');
+    }
+
+    setStatus(response.message || 'Duplicate tabs closed.');
+  } catch (error) {
+    console.error('Popup close duplicates error', error);
+    setStatus(error.message || 'Unexpected error.');
+  } finally {
+    setCloseDuplicatesWorkingState(false);
+  }
+});
+
 dryRunNoLlmCheckbox.addEventListener('change', async () => {
   try {
     await chrome.storage.sync.set({ dryRunNoLLM: dryRunNoLlmCheckbox.checked });
@@ -154,9 +179,24 @@ function setNoLLMWorkingState(isWorking) {
   }
 }
 
+function setCloseDuplicatesWorkingState(isWorking) {
+  setInteractivity(isWorking);
+  if (isWorking) {
+    closeDuplicatesButton.textContent = 'Closing duplicates…';
+    setStatus('');
+  } else {
+    closeDuplicatesButton.textContent = 'Close duplicates';
+    if (!awaitingConfirmation) {
+      llmButton.textContent = 'Organize (LLM)';
+      noLlmButton.textContent = 'Organize (No-LLM)';
+    }
+  }
+}
+
 function setInteractivity(disabled) {
   llmButton.disabled = disabled;
   noLlmButton.disabled = disabled;
+  closeDuplicatesButton.disabled = disabled;
   textarea.disabled = disabled;
   dryRunNoLlmCheckbox.disabled = disabled;
 }
