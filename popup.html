@@ -17,7 +17,14 @@
           rows="4"
           placeholder="e.g., Group by project and close social media duplicates"
         ></textarea>
-        <button type="submit" id="organize-button">Organize</button>
+        <div class="button-row">
+          <button type="submit" id="organize-llm">Organize (LLM)</button>
+          <button type="button" id="organize-nollm">Organize (No-LLM)</button>
+        </div>
+        <label class="checkbox-inline" for="dryRunNoLLM">
+          <input type="checkbox" id="dryRunNoLLM" name="dryRunNoLLM" />
+          Dry-run (No-LLM)
+        </label>
       </form>
       <section id="preview" hidden>
         <h2>Planned changes</h2>

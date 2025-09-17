@@ -4,7 +4,10 @@ import {
   computeDedupePlan,
   sanitizeGroupPlan,
   summarizePlanForPreview,
-  extractDomain
+  extractDomain,
+  dedupeTabs,
+  groupByRules,
+  parseUserRulesJSON
 } from './tab_utils.js';
 
 const RATE_LIMIT_INTERVAL_MS = 5000;
@@ -17,23 +20,40 @@ const DEFAULT_SYNC_SETTINGS = {
   keepAtLeastOnePerDomain: true,
   preservePinned: true,
   maxTabsPerGroup: 6,
-  dryRun: false
+  dryRun: false,
+  dryRunNoLLM: false,
+  userRulesJSON: ''
 };
 
 let lastCompletionTimestamp = 0;
 const previewPlans = new Map();
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || message.type !== 'organize-tabs') {
+  if (!message || !message.type) {
     return false;
   }
-  handleOrganizeMessage(message)
-    .then((result) => sendResponse(result))
-    .catch((error) => {
-      console.error('[Tab Organizer AI] organize-tabs error', error);
-      sendResponse({ success: false, error: error.message || 'Unexpected error' });
-    });
-  return true;
+
+  if (message.type === 'organize-tabs' || message.type === 'ORGANIZE_TABS_LLM') {
+    handleOrganizeMessage(message)
+      .then((result) => sendResponse(result))
+      .catch((error) => {
+        console.error('[Tab Organizer AI] organize-tabs error', error);
+        sendResponse({ success: false, error: error.message || 'Unexpected error' });
+      });
+    return true;
+  }
+
+  if (message.type === 'ORGANIZE_TABS_NOLLM') {
+    handleOrganizeTabsNoLLM(message)
+      .then((result) => sendResponse(result))
+      .catch((error) => {
+        console.error('[Tab Organizer AI] no-llm error', error);
+        sendResponse({ success: false, error: error.message || 'Unexpected error' });
+      });
+    return true;
+  }
+
+  return false;
 });
 
 /**
@@ -77,6 +97,97 @@ async function handleOrganizeMessage(message) {
   const plan = await buildPlan(userPrompt, preferences, { skipRateLimit: false });
   const applyResult = await applyPlan(plan);
   return { success: true, preview: false, ...applyResult };
+}
+
+/**
+ * Deterministic tab organization without the LLM dependency.
+ * @param {{ dryRun?: boolean, userRules?: string }} message
+ */
+async function handleOrganizeTabsNoLLM(message) {
+  const preferences = await loadPreferences();
+  const dryRun = typeof message.dryRun === 'boolean' ? message.dryRun : Boolean(preferences.dryRunNoLLM);
+  const rulesSource = typeof message.userRules === 'string' ? message.userRules : preferences.userRulesJSON || '';
+  const userRules = parseUserRulesJSON(rulesSource);
+
+  let currentWindow;
+  try {
+    currentWindow = await chrome.windows.getCurrent({ populate: false });
+  } catch (error) {
+    throw new Error('Unable to determine the current window.');
+  }
+
+  if (!currentWindow || typeof currentWindow.id !== 'number') {
+    throw new Error('Unable to determine the current window.');
+  }
+
+  if (currentWindow.incognito) {
+    throw new Error('The no-LLM organizer is unavailable in incognito windows.');
+  }
+
+  const tabs = await chrome.tabs.query({ windowId: currentWindow.id });
+  if (!tabs.length) {
+    throw new Error('No tabs were found in the current window.');
+  }
+
+  const dedupePlan = dedupeTabs(tabs, {
+    preservePinned: preferences.preservePinned !== false,
+    keepAtLeastOnePerDomain: preferences.keepAtLeastOnePerDomain !== false
+  });
+
+  const groupingPlan = groupByRules(dedupePlan.survivors, {
+    userRules,
+    maxTabsPerGroup: preferences.maxTabsPerGroup,
+    preservePinned: preferences.preservePinned !== false
+  });
+
+  const closedPlanned = dedupePlan.tabsToClose.filter((item) => typeof item.id === 'number');
+  const statusMessage = buildNoLlmStatus({
+    closedCount: closedPlanned.length,
+    groupCount: groupingPlan.groups.length,
+    dryRun
+  });
+
+  if (dryRun) {
+    return {
+      success: true,
+      dryRun: true,
+      closed: closedPlanned.length,
+      groups: groupingPlan.summary,
+      message: statusMessage,
+      plan: {
+        duplicates: dedupePlan.tabsToClose.map((item) => ({
+          id: item.id,
+          title: item.title,
+          url: item.url,
+          duplicateOf: item.duplicateOf
+        })),
+        groups: groupingPlan.groups.map((group) => ({
+          name: group.name,
+          color: group.color || null,
+          count: group.tabIds.length,
+          tabs: group.tabs
+        }))
+      }
+    };
+  }
+
+  const applyResult = await applyNoLlmPlan(currentWindow.id, dedupePlan, groupingPlan, {
+    preservePinned: preferences.preservePinned !== false
+  });
+
+  const messageAfterApply = buildNoLlmStatus({
+    closedCount: applyResult.closedCount,
+    groupCount: applyResult.groups.length,
+    dryRun: false
+  });
+
+  return {
+    success: true,
+    dryRun: false,
+    closed: applyResult.closedCount,
+    groups: applyResult.groups,
+    message: messageAfterApply
+  };
 }
 
 /**
@@ -210,6 +321,81 @@ async function applyPlan(plan) {
 }
 
 /**
+ * Apply deterministic dedupe and grouping results for the no-LLM path.
+ * @param {number} windowId
+ * @param {{ tabsToClose: Array<{id:number}>, survivors: any[] }} dedupePlan
+ * @param {{ groups: Array<{ name: string, tabIds: number[], color?: string }> }} groupingPlan
+ * @param {{ preservePinned?: boolean }} options
+ */
+async function applyNoLlmPlan(windowId, dedupePlan, groupingPlan, options = {}) {
+  const preservePinned = options.preservePinned !== false;
+  const currentTabs = await chrome.tabs.query({ windowId });
+  const tabMap = new Map(currentTabs.map((tab) => [tab.id, tab]));
+
+  const removalIds = [];
+  for (const item of dedupePlan.tabsToClose) {
+    const tab = tabMap.get(item.id);
+    if (!tab) continue;
+    if (preservePinned && tab.pinned) continue;
+    removalIds.push(tab.id);
+  }
+
+  if (removalIds.length) {
+    try {
+      await chrome.tabs.remove(removalIds);
+    } catch (error) {
+      console.warn('Failed to remove duplicate tabs', error);
+    }
+  }
+
+  const tabsAfterRemoval = removalIds.length ? await chrome.tabs.query({ windowId }) : currentTabs;
+  const postRemovalMap = new Map(tabsAfterRemoval.map((tab) => [tab.id, tab]));
+  const assigned = new Set();
+  const appliedGroups = [];
+
+  for (const group of groupingPlan.groups) {
+    const candidateIds = [];
+    for (const tabId of group.tabIds) {
+      const tab = postRemovalMap.get(tabId);
+      if (!tab) continue;
+      if (preservePinned && tab.pinned) continue;
+      candidateIds.push(tabId);
+    }
+    if (!candidateIds.length) continue;
+    try {
+      const groupId = await chrome.tabs.group({ tabIds: candidateIds });
+      const updatePayload = { title: group.name };
+      if (group.color) {
+        updatePayload.color = group.color;
+      }
+      await chrome.tabGroups.update(groupId, updatePayload);
+      candidateIds.forEach((id) => assigned.add(id));
+      appliedGroups.push({ name: group.name, count: candidateIds.length });
+    } catch (error) {
+      console.warn('Failed to apply deterministic group', group, error);
+    }
+  }
+
+  for (const tab of tabsAfterRemoval) {
+    if (tab.groupId === TAB_GROUP_ID_NONE) continue;
+    if (assigned.has(tab.id)) continue;
+    if (preservePinned && tab.pinned) continue;
+    try {
+      await chrome.tabs.ungroup(tab.id);
+    } catch (error) {
+      console.warn('Failed to ungroup tab during deterministic apply', tab.id, error);
+    }
+  }
+
+  await cleanupEmptyGroups(windowId);
+
+  return {
+    closedCount: removalIds.length,
+    groups: appliedGroups
+  };
+}
+
+/**
  * Fetch LLM grouping suggestions.
  * @param {{windowId: number, tabs: any[], preferences: any, userPrompt: string, skipRateLimit: boolean}} params
  */
@@ -285,13 +471,17 @@ async function fetchGroupingFromLLM(params) {
  */
 async function loadPreferences() {
   const stored = await chrome.storage.sync.get(DEFAULT_SYNC_SETTINGS);
+  const rawMaxTabs = Number(stored.maxTabsPerGroup);
+  const maxTabsPerGroup = Number.isFinite(rawMaxTabs) && rawMaxTabs >= 2 ? Math.floor(rawMaxTabs) : DEFAULT_SYNC_SETTINGS.maxTabsPerGroup;
   return {
     apiKey: typeof stored.apiKey === 'string' ? stored.apiKey.trim() : '',
     model: typeof stored.model === 'string' && stored.model.trim() ? stored.model.trim() : DEFAULT_MODEL,
     keepAtLeastOnePerDomain: stored.keepAtLeastOnePerDomain !== false,
     preservePinned: stored.preservePinned !== false,
-    maxTabsPerGroup: Math.max(2, Number(stored.maxTabsPerGroup) || 6),
-    dryRun: Boolean(stored.dryRun)
+    maxTabsPerGroup,
+    dryRun: Boolean(stored.dryRun),
+    dryRunNoLLM: Boolean(stored.dryRunNoLLM),
+    userRulesJSON: typeof stored.userRulesJSON === 'string' ? stored.userRulesJSON : ''
   };
 }
 
@@ -368,4 +558,23 @@ function buildCompletionMessage(stats) {
     parts.push('No changes were necessary.');
   }
   return parts.join(' ');
+}
+
+/**
+ * Create a concise status line for deterministic organization results.
+ * @param {{closedCount: number, groupCount: number, dryRun: boolean}} details
+ */
+function buildNoLlmStatus(details) {
+  const closePart = details.closedCount
+    ? `${details.dryRun ? 'Would close' : 'Closed'} ${details.closedCount} dupe${details.closedCount === 1 ? '' : 's'}`
+    : details.dryRun
+    ? 'Would keep all tabs'
+    : 'No duplicates closed';
+  const groupPart = details.groupCount
+    ? `${details.dryRun ? 'Would organize' : 'Organized'} ${details.groupCount} group${details.groupCount === 1 ? '' : 's'}`
+    : details.dryRun
+    ? 'No groups to create'
+    : 'No group changes';
+  const summary = `${closePart} · ${groupPart}`;
+  return details.dryRun ? `Dry-run: ${summary}` : summary;
 }

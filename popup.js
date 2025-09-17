@@ -1,6 +1,8 @@
 const form = document.getElementById('organize-form');
 const textarea = document.getElementById('organize-input');
-const button = document.getElementById('organize-button');
+const llmButton = document.getElementById('organize-llm');
+const noLlmButton = document.getElementById('organize-nollm');
+const dryRunNoLlmCheckbox = document.getElementById('dryRunNoLLM');
 const statusEl = document.getElementById('status');
 const previewSection = document.getElementById('preview');
 const previewContent = document.getElementById('preview-content');
@@ -8,6 +10,10 @@ const previewContent = document.getElementById('preview-content');
 let awaitingConfirmation = false;
 let previewToken = null;
 let previewPromptValue = '';
+let cachedUserRules = '';
+let llmDryRunPreference = false;
+
+initializePopup();
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -19,14 +25,22 @@ form.addEventListener('submit', async (event) => {
   const confirm = awaitingConfirmation;
   const prompt = textarea.value.trim();
 
-  setWorkingState(true, confirm ? 'Applying…' : 'Organizing…');
+  setLLMWorkingState(true, confirm ? 'Applying…' : 'Organizing…');
 
   try {
+    try {
+      const stored = await chrome.storage.sync.get({ dryRun: llmDryRunPreference });
+      llmDryRunPreference = Boolean(stored.dryRun);
+    } catch (error) {
+      console.warn('Unable to refresh LLM dry-run preference', error);
+    }
+
     const response = await chrome.runtime.sendMessage({
-      type: 'organize-tabs',
+      type: 'ORGANIZE_TABS_LLM',
       prompt,
       confirm,
-      token: confirm ? previewToken : undefined
+      token: confirm ? previewToken : undefined,
+      dryRun: llmDryRunPreference
     });
 
     if (!response) {
@@ -43,8 +57,7 @@ form.addEventListener('submit', async (event) => {
       previewPromptValue = prompt;
       renderPreview(response.summary);
       setStatus(response.message || 'Review the plan and confirm.');
-      button.textContent = 'Apply plan';
-      button.disabled = false;
+      llmButton.textContent = 'Apply plan';
       return;
     }
 
@@ -54,20 +67,98 @@ form.addEventListener('submit', async (event) => {
     console.error('Popup organize error', error);
     setStatus(error.message || 'Unexpected error.');
   } finally {
-    setWorkingState(false);
+    setLLMWorkingState(false);
   }
 });
 
-function setWorkingState(isWorking, label) {
-  button.disabled = isWorking;
+noLlmButton.addEventListener('click', async () => {
+  resetPreview();
+  setNoLLMWorkingState(true);
+
+  try {
+    try {
+      const stored = await chrome.storage.sync.get({
+        userRulesJSON: cachedUserRules,
+        dryRunNoLLM: dryRunNoLlmCheckbox.checked
+      });
+      if (typeof stored.userRulesJSON === 'string') {
+        cachedUserRules = stored.userRulesJSON;
+      }
+      if (typeof stored.dryRunNoLLM === 'boolean') {
+        dryRunNoLlmCheckbox.checked = stored.dryRunNoLLM;
+      }
+    } catch (error) {
+      console.warn('Unable to refresh no-LLM preferences', error);
+    }
+
+    const response = await chrome.runtime.sendMessage({
+      type: 'ORGANIZE_TABS_NOLLM',
+      dryRun: dryRunNoLlmCheckbox.checked,
+      userRules: cachedUserRules
+    });
+
+    if (!response) {
+      throw new Error('No response from background script.');
+    }
+
+    if (!response.success) {
+      throw new Error(response.error || 'Unable to organize tabs.');
+    }
+
+    setStatus(response.message || '');
+
+    if (response.dryRun && response.plan) {
+      renderPreview(convertPlanToPreview(response.plan));
+    }
+  } catch (error) {
+    console.error('Popup no-LLM organize error', error);
+    setStatus(error.message || 'Unexpected error.');
+  } finally {
+    setNoLLMWorkingState(false);
+  }
+});
+
+dryRunNoLlmCheckbox.addEventListener('change', async () => {
+  try {
+    await chrome.storage.sync.set({ dryRunNoLLM: dryRunNoLlmCheckbox.checked });
+  } catch (error) {
+    console.warn('Unable to persist no-LLM dry-run preference', error);
+  }
+});
+
+function setLLMWorkingState(isWorking, label) {
+  setInteractivity(isWorking);
   if (label) {
-    button.textContent = label;
+    llmButton.textContent = label;
   } else if (!awaitingConfirmation) {
-    button.textContent = 'Organize';
+    llmButton.textContent = 'Organize (LLM)';
+  }
+  if (!isWorking && awaitingConfirmation) {
+    llmButton.disabled = false;
   }
   if (isWorking) {
     setStatus('');
   }
+}
+
+function setNoLLMWorkingState(isWorking) {
+  setInteractivity(isWorking);
+  if (isWorking) {
+    noLlmButton.textContent = 'Organizing…';
+    setStatus('');
+  } else {
+    noLlmButton.textContent = 'Organize (No-LLM)';
+    if (!awaitingConfirmation) {
+      llmButton.textContent = 'Organize (LLM)';
+    }
+  }
+}
+
+function setInteractivity(disabled) {
+  llmButton.disabled = disabled;
+  noLlmButton.disabled = disabled;
+  textarea.disabled = disabled;
+  dryRunNoLlmCheckbox.disabled = disabled;
 }
 
 function setStatus(message) {
@@ -145,5 +236,33 @@ function resetPreview() {
   previewPromptValue = '';
   previewSection.hidden = true;
   previewContent.innerHTML = '';
-  button.textContent = 'Organize';
+  llmButton.textContent = 'Organize (LLM)';
+  noLlmButton.textContent = 'Organize (No-LLM)';
 }
+
+function convertPlanToPreview(plan) {
+  return {
+    closing: (plan.duplicates || []).map((item) => ({ title: item.title, url: item.url })),
+    groups: (plan.groups || []).map((group) => ({
+      name: group.name,
+      tabs: (group.tabs || []).map((tab) => ({ title: tab.title, url: tab.url }))
+    }))
+  };
+}
+
+async function initializePopup() {
+  try {
+    const stored = await chrome.storage.sync.get({
+      dryRunNoLLM: false,
+      userRulesJSON: '',
+      dryRun: false
+    });
+    dryRunNoLlmCheckbox.checked = Boolean(stored.dryRunNoLLM);
+    cachedUserRules = typeof stored.userRulesJSON === 'string' ? stored.userRulesJSON : '';
+    llmDryRunPreference = Boolean(stored.dryRun);
+  } catch (error) {
+    console.warn('Unable to load popup preferences', error);
+  }
+}
+
+resetPreview();
