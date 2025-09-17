@@ -1432,7 +1432,17 @@ const CATEGORY_RULE_DEFINITIONS = {
       ['Wikipedia', 'wikipedia.org'],
       ['Medium', 'medium.com'],
       ['Dev.to', 'dev.to'],
-      ['freeCodeCamp', 'freecodecamp.org']
+      ['freeCodeCamp', 'freecodecamp.org'],
+      ['ChatGPT', 'chatgpt.com'],
+      ['Claude', 'claude.ai'],
+      ['Perplexity', 'perplexity.ai'],
+      ['Gemini', 'gemini.google.com'],
+      ['Bard', 'bard.google.com'],
+      ['Microsoft Copilot', 'copilot.microsoft.com'],
+      ['Poe', 'poe.com'],
+      ['Phind', 'phind.com'],
+      ['Hugging Face', 'huggingface.co'],
+      ['NotebookLM', 'notebooklm.google.com']
     ],
     paths: [
       { label: 'Google Search', host: 'google.com', path: '^/(?:search|webhp)' }
@@ -1809,7 +1819,28 @@ const CATEGORY_KEYWORD_DEFINITIONS = {
       analysis: 2,
       how: 2
     },
-    hostHints: ['google', 'scholar', 'arxiv', 'stackoverflow', 'stackexchange', 'mozilla', 'wikipedia', 'medium', 'dev.to', 'freecodecamp'],
+    hostHints: [
+      'google',
+      'scholar',
+      'arxiv',
+      'stackoverflow',
+      'stackexchange',
+      'mozilla',
+      'wikipedia',
+      'medium',
+      'dev.to',
+      'freecodecamp',
+      'chatgpt',
+      'claude',
+      'perplexity',
+      'gemini.google',
+      'bard.google',
+      'copilot.microsoft',
+      'poe.com',
+      'phind',
+      'huggingface',
+      'notebooklm.google'
+    ],
     pathHints: ['search', 'learn'],
     threshold: 3
   },
