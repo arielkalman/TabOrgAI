@@ -135,6 +135,16 @@ const MULTI_LEVEL_TLDS = new Set([
 
 const lastClassification = new Map();
 
+export const IMPORTANT_CATEGORY_NAMES = Object.freeze([
+  'Work/PM',
+  'Dev/Code',
+  'Docs/Files',
+  'Comms',
+  'Cloud/Infra'
+]);
+
+const IMPORTANT_CATEGORY_SET = new Set(IMPORTANT_CATEGORY_NAMES.map((name) => name.toLowerCase()));
+
 /**
  * Escape regex special characters.
  * @param {string} value
@@ -709,12 +719,35 @@ export async function fetchCurrentWindowTabs() {
  * Determine duplicates.
  * @param {TabSnapshot[]} tabs
  * @param {{ preservePinned: boolean, keepAtLeastOnePerDomain: boolean }} preferences
- * @returns {{ tabsToClose: Array<{id:number,title:string,url:string,reason:string,duplicateOf:number,domain:string|null}>, survivors: TabSnapshot[], duplicateSets: Array<{canonical: string|null, keeper: TabSnapshot, closing: TabSnapshot[]}> }}
+ * @returns {{
+ *   tabsToClose: Array<{
+ *     id: number,
+ *     title: string,
+ *     url: string,
+ *     reason: string,
+ *     duplicateOf: number,
+ *     domain: string | null
+ *   }>,
+ *   survivors: TabSnapshot[],
+ *   duplicateSets: Array<{
+ *     canonical: string | null,
+ *     keeper: TabSnapshot,
+ *     closing: TabSnapshot[],
+ *     domain?: string | null
+ *   }>
+ * }}
  */
 export function computeDedupePlan(tabs, preferences) {
+  const metadataById = new Map();
+  for (const tab of tabs) {
+    const metadata = createDedupeMetadata(tab);
+    metadataById.set(tab.id, metadata);
+  }
+
   const canonicalGroups = new Map();
   for (const tab of tabs) {
-    const canonical = canonicalizeUrl(tab.url);
+    const metadata = metadataById.get(tab.id);
+    const canonical = metadata && metadata.info ? metadata.info.canonical : canonicalizeUrl(tab.url);
     const key = canonical || `id-${tab.id}`;
     if (!canonicalGroups.has(key)) {
       canonicalGroups.set(key, []);
@@ -725,6 +758,7 @@ export function computeDedupePlan(tabs, preferences) {
   const keepers = new Set();
   const tabsToClose = [];
   const duplicateSets = [];
+  const closedIds = new Set();
 
   for (const [key, groupTabs] of canonicalGroups.entries()) {
     if (groupTabs.length === 1) {
@@ -741,14 +775,68 @@ export function computeDedupePlan(tabs, preferences) {
         keepers.add(dup.id);
         continue;
       }
+      const metadata = metadataById.get(dup.id);
       tabsToClose.push({
         id: dup.id,
         title: dup.title,
         url: dup.url,
         reason: `Duplicate of "${keeper.title}"`,
         duplicateOf: keeper.id,
-        domain: extractDomain(dup.url)
+        domain: resolveMetadataDomain(metadata, dup)
       });
+      closedIds.add(dup.id);
+    }
+  }
+
+  const domainGroups = new Map();
+  for (const tab of tabs) {
+    if (closedIds.has(tab.id) || !keepers.has(tab.id)) {
+      continue;
+    }
+    const metadata = metadataById.get(tab.id);
+    if (!metadata || metadata.important) {
+      continue;
+    }
+    const domain = resolveMetadataDomain(metadata, tab);
+    if (!domain) {
+      continue;
+    }
+    if (!domainGroups.has(domain)) {
+      domainGroups.set(domain, []);
+    }
+    domainGroups.get(domain).push(tab);
+  }
+
+  for (const [domain, groupTabs] of domainGroups.entries()) {
+    if (groupTabs.length <= 1) {
+      continue;
+    }
+    const sorted = groupTabs
+      .slice()
+      .sort((a, b) => scoreTab(b, preferences.preservePinned) - scoreTab(a, preferences.preservePinned));
+    const keeper = sorted[0];
+    const duplicates = sorted.slice(1);
+    const closingTabs = [];
+    for (const dup of duplicates) {
+      if (closedIds.has(dup.id)) {
+        continue;
+      }
+      if (preferences.preservePinned && dup.pinned) {
+        continue;
+      }
+      tabsToClose.push({
+        id: dup.id,
+        title: dup.title,
+        url: dup.url,
+        reason: `Keeping the best ${domain} tab open.`,
+        duplicateOf: keeper.id,
+        domain
+      });
+      closedIds.add(dup.id);
+      closingTabs.push(dup);
+    }
+    if (closingTabs.length) {
+      duplicateSets.push({ canonical: null, keeper, closing: closingTabs, domain });
     }
   }
 
@@ -770,6 +858,7 @@ export function computeDedupePlan(tabs, preferences) {
       const count = survivorDomains.get(item.domain) || 0;
       if (count <= 0) {
         keepers.add(item.id);
+        closedIds.delete(item.id);
       } else {
         survivorDomains.set(item.domain, count - 1);
         filtered.push(item);
@@ -779,8 +868,43 @@ export function computeDedupePlan(tabs, preferences) {
     tabsToClose.push(...filtered);
   }
 
-  const survivors = tabs.filter((tab) => keepers.has(tab.id) && !tabsToClose.some((item) => item.id === tab.id));
+  const survivors = tabs.filter((tab) => keepers.has(tab.id) && !closedIds.has(tab.id));
   return { tabsToClose, survivors, duplicateSets };
+}
+
+function createDedupeMetadata(tab) {
+  const info = prepareTabForClassification(tab);
+  const category = determineCategoryForTabInfo(info);
+  return {
+    info,
+    category,
+    important: isImportantCategory(category)
+  };
+}
+
+function resolveMetadataDomain(metadata, tab) {
+  if (metadata && metadata.info && metadata.info.domain) {
+    return metadata.info.domain;
+  }
+  return extractDomain(tab.url);
+}
+
+function determineCategoryForTabInfo(info) {
+  if (!info) return 'Other';
+  const ruleMatch = matchCategoryRule(info);
+  if (ruleMatch) {
+    const category = normalizeCategoryName(ruleMatch.category || ruleMatch.name);
+    if (category) {
+      return category;
+    }
+  }
+  const scored = scoreCategory(info);
+  return normalizeCategoryName((scored && scored.category) || 'Other');
+}
+
+function isImportantCategory(category) {
+  if (!category) return false;
+  return IMPORTANT_CATEGORY_SET.has(String(category).toLowerCase());
 }
 
 /**

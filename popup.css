@@ -174,18 +174,12 @@ textarea:disabled {
 
 .primary-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 10px;
-  align-items: stretch;
 }
 
 .primary-actions .glass-button {
-  flex: 1 1 160px;
-}
-
-.primary-actions #close-duplicates {
-  flex: 0 1 auto;
-  min-width: 150px;
+  width: 100%;
 }
 
 .nolllm-section {
@@ -194,6 +188,14 @@ textarea:disabled {
 }
 
 .nolllm-section .glass-button {
+  width: 100%;
+}
+
+.dedupe-section {
+  display: flex;
+}
+
+.dedupe-section .glass-button {
   width: 100%;
 }
 
@@ -249,11 +251,11 @@ textarea:disabled {
 }
 
 .tooltip-bubble {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  width: 220px;
-  max-width: 70vw;
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: max-content;
+  max-width: min(240px, calc(100vw - 16px));
   padding: 10px 12px;
   border-radius: 12px;
   background: rgba(15, 23, 42, 0.92);
@@ -262,15 +264,16 @@ textarea:disabled {
   line-height: 1.45;
   box-shadow: 0 18px 32px rgba(15, 23, 42, 0.25);
   opacity: 0;
+  visibility: hidden;
   transform: translateY(-4px);
   pointer-events: none;
   transition: opacity 160ms ease, transform 160ms ease;
   z-index: 2;
 }
 
-.tooltip-container:hover .tooltip-bubble,
-.tooltip-container:focus-within .tooltip-bubble {
+.tooltip-bubble[data-visible='true'] {
   opacity: 1;
+  visibility: visible;
   transform: translateY(0);
 }
 
@@ -481,17 +484,10 @@ textarea:disabled {
     padding: 22px 18px 24px;
   }
 
-  .primary-actions {
-    flex-direction: column;
-  }
-
   .primary-actions .glass-button,
-  .nolllm-section .glass-button {
+  .nolllm-section .glass-button,
+  .dedupe-section .glass-button {
     width: 100%;
-  }
-
-  .primary-actions #close-duplicates {
-    min-width: 0;
   }
 
   .toggle-row {

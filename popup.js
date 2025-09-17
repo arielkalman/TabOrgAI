@@ -8,14 +8,41 @@ const dryRunNoLlmCheckbox = document.getElementById('dryRunNoLLM');
 const statusEl = document.getElementById('status');
 const previewSection = document.getElementById('preview');
 const previewContent = document.getElementById('preview-content');
+const tooltipTrigger = document.querySelector('.tooltip-trigger');
+const tooltipBubble = document.getElementById('dry-run-tooltip');
 
 let awaitingConfirmation = false;
 let previewToken = null;
 let previewPromptValue = '';
 let cachedUserRules = '';
 let llmDryRunPreference = false;
+let tooltipVisible = false;
 
 initializePopup();
+
+if (tooltipTrigger && tooltipBubble) {
+  tooltipTrigger.setAttribute('aria-expanded', 'false');
+  tooltipTrigger.addEventListener('mouseenter', showTooltip);
+  tooltipTrigger.addEventListener('focus', showTooltip);
+  tooltipTrigger.addEventListener('mouseleave', hideTooltip);
+  tooltipTrigger.addEventListener('blur', hideTooltip);
+  tooltipTrigger.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      hideTooltip();
+    }
+  });
+
+  window.addEventListener('resize', updateTooltipPosition);
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (tooltipVisible) {
+        updateTooltipPosition();
+      }
+    },
+    true
+  );
+}
 
 if (settingsButton) {
   settingsButton.addEventListener('click', () => {
@@ -205,6 +232,9 @@ function setCloseDuplicatesWorkingState(isWorking) {
 }
 
 function setInteractivity(disabled) {
+  if (disabled) {
+    hideTooltip();
+  }
   llmButton.disabled = disabled;
   noLlmButton.disabled = disabled;
   closeDuplicatesButton.disabled = disabled;
@@ -221,58 +251,63 @@ function renderPreview(summary) {
     resetPreview();
     return;
   }
+
+  const closingItems = Array.isArray(summary.closing) ? summary.closing : [];
+  const groupingItems = Array.isArray(summary.groups) ? summary.groups : [];
+  const notesText = typeof summary.notes === 'string' ? summary.notes.trim() : '';
+  const hasClosing = closingItems.length > 0;
+  const hasGrouping = groupingItems.length > 0;
+  const hasNotes = notesText.length > 0;
+
+  if (!hasClosing && !hasGrouping && !hasNotes) {
+    resetPreview();
+    return;
+  }
+
   previewContent.innerHTML = '';
 
-  const closingSection = document.createElement('div');
-  closingSection.className = 'preview-section';
-  const closingTitle = document.createElement('h3');
-  closingTitle.textContent = 'Tabs to close';
-  closingSection.appendChild(closingTitle);
-  const closingList = document.createElement('ul');
-  closingList.className = 'preview-list';
-  if (summary.closing.length) {
-    for (const item of summary.closing) {
+  if (hasClosing) {
+    const closingSection = document.createElement('div');
+    closingSection.className = 'preview-section';
+    const closingTitle = document.createElement('h3');
+    closingTitle.textContent = 'Tabs to close';
+    closingSection.appendChild(closingTitle);
+    const closingList = document.createElement('ul');
+    closingList.className = 'preview-list';
+    for (const item of closingItems) {
       const li = document.createElement('li');
       li.textContent = `${item.title} – ${item.url}`;
       closingList.appendChild(li);
     }
-  } else {
-    const li = document.createElement('li');
-    li.textContent = 'No duplicates will be closed.';
-    closingList.appendChild(li);
+    closingSection.appendChild(closingList);
+    previewContent.appendChild(closingSection);
   }
-  closingSection.appendChild(closingList);
-  previewContent.appendChild(closingSection);
 
-  const groupingSection = document.createElement('div');
-  groupingSection.className = 'preview-section';
-  const groupingTitle = document.createElement('h3');
-  groupingTitle.textContent = 'Tab groups';
-  groupingSection.appendChild(groupingTitle);
-  const groupingList = document.createElement('ul');
-  groupingList.className = 'preview-list';
-  if (summary.groups.length) {
-    for (const group of summary.groups) {
+  if (hasGrouping) {
+    const groupingSection = document.createElement('div');
+    groupingSection.className = 'preview-section';
+    const groupingTitle = document.createElement('h3');
+    groupingTitle.textContent = 'Tab groups';
+    groupingSection.appendChild(groupingTitle);
+    const groupingList = document.createElement('ul');
+    groupingList.className = 'preview-list';
+    for (const group of groupingItems) {
       const li = document.createElement('li');
       const tabList = group.tabs.map((tab) => tab.title).join(', ');
       li.textContent = `${group.name}: ${tabList}`;
       groupingList.appendChild(li);
     }
-  } else {
-    const li = document.createElement('li');
-    li.textContent = 'No changes to tab groups.';
-    groupingList.appendChild(li);
+    groupingSection.appendChild(groupingList);
+    previewContent.appendChild(groupingSection);
   }
-  groupingSection.appendChild(groupingList);
-  previewContent.appendChild(groupingSection);
 
-  if (summary.notes) {
+  if (hasNotes) {
     const notesSection = document.createElement('div');
     notesSection.className = 'preview-section';
     const notesTitle = document.createElement('h3');
     notesTitle.textContent = 'Notes';
     const notesBody = document.createElement('p');
-    notesBody.textContent = summary.notes;
+    notesBody.textContent = notesText;
     notesSection.appendChild(notesTitle);
     notesSection.appendChild(notesBody);
     previewContent.appendChild(notesSection);
@@ -297,8 +332,62 @@ function convertPlanToPreview(plan) {
     groups: (plan.groups || []).map((group) => ({
       name: group.name,
       tabs: (group.tabs || []).map((tab) => ({ title: tab.title, url: tab.url }))
-    }))
+    })),
+    notes: typeof plan.notes === 'string' ? plan.notes : ''
   };
+}
+
+function showTooltip() {
+  if (!tooltipTrigger || !tooltipBubble) {
+    return;
+  }
+  if (tooltipVisible) {
+    updateTooltipPosition();
+    return;
+  }
+  tooltipVisible = true;
+  tooltipBubble.dataset.visible = 'true';
+  tooltipTrigger.setAttribute('aria-expanded', 'true');
+  requestAnimationFrame(() => {
+    updateTooltipPosition();
+  });
+}
+
+function hideTooltip() {
+  if (!tooltipTrigger || !tooltipBubble || !tooltipVisible) {
+    return;
+  }
+  tooltipVisible = false;
+  delete tooltipBubble.dataset.visible;
+  tooltipTrigger.setAttribute('aria-expanded', 'false');
+}
+
+function updateTooltipPosition() {
+  if (!tooltipTrigger || !tooltipBubble || !tooltipVisible) {
+    return;
+  }
+  const margin = 8;
+  const triggerRect = tooltipTrigger.getBoundingClientRect();
+  const bubbleRect = tooltipBubble.getBoundingClientRect();
+  const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+  const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+
+  let left = triggerRect.left + triggerRect.width / 2 - bubbleRect.width / 2;
+  left = Math.max(margin, Math.min(left, viewportWidth - margin - bubbleRect.width));
+
+  let top = triggerRect.bottom + margin;
+  if (top + bubbleRect.height > viewportHeight - margin) {
+    const above = triggerRect.top - margin - bubbleRect.height;
+    if (above >= margin) {
+      top = above;
+    } else {
+      top = Math.max(margin, Math.min(viewportHeight - margin - bubbleRect.height, triggerRect.top + margin));
+    }
+  }
+  top = Math.max(margin, Math.min(top, viewportHeight - margin - bubbleRect.height));
+
+  tooltipBubble.style.left = `${Math.round(left)}px`;
+  tooltipBubble.style.top = `${Math.round(top)}px`;
 }
 
 async function initializePopup() {

@@ -52,7 +52,7 @@ async function initializeActionIcon() {
   }
 
   try {
-    const response = await fetch(chrome.runtime.getURL('TabOrgAI.png'));
+    const response = await fetch(chrome.runtime.getURL('logo.png'));
     if (!response.ok) {
       throw new Error(`Failed to load logo asset (${response.status})`);
     }
