@@ -1,52 +1,52 @@
 # Tab Organizer AI
 
-A minimal, production-ready Chrome extension (Manifest V3) that uses your own OpenAI API key to deduplicate and group the tabs in your current Chrome window.
+Tab Organizer AI is a Manifest V3 Chrome extension that keeps the current browser window under control. It removes duplicate tabs, builds meaningful Chrome tab groups, and can do it either with your own OpenAI API key or with a deterministic offline mode. The project is intentionally lightweight—plain HTML, CSS, and JavaScript—so you can inspect, customize, and ship it quickly.
+
 ![Alt text](/TabOrgAI.png)
 
-## Features
+## Key features
 
-- Securely stores your OpenAI API key and preferred model in `chrome.storage.sync`.
-- Smart duplicate detection that keeps the most relevant tab (active/pinned/recent) and closes extras.
-- AI-powered grouping that creates or updates Chrome tab groups using concise intent-based names.
-- Dry-run preview option to inspect the plan before applying changes.
-- Respect for pinned tabs and per-domain safeguards.
-- Offline "No-LLM" organizer that applies deterministic rules, grouping, and dry-run previews without calling OpenAI.
+- **Bring-your-own OpenAI key** – Store your API key and preferred model securely in `chrome.storage.sync`; nothing leaves your machine except the request to OpenAI.
+- **Smart deduplication** – Close redundant tabs while keeping the most relevant version (active, pinned, or most recently used).
+- **AI or deterministic grouping** – Let the LLM craft intent-based group names, or switch to the built-in rules engine for an entirely offline organizer.
+- **Dry-run previews** – Inspect the proposed changes before they touch your tabs in either mode.
+- **Pinned and per-domain safety rails** – Respect pinned tabs, keep at least one tab per domain, and cap group sizes.
 
 ## Installation
 
 1. Clone or download this repository.
-2. Open **chrome://extensions** in Chrome.
+2. Open `chrome://extensions` in Google Chrome.
 3. Enable **Developer mode** in the top-right corner.
-4. Click **Load unpacked** and select the folder containing this project.
+4. Click **Load unpacked** and select the project directory.
 
 ## Configuration
 
-1. In the extensions list, click **Details** for Tab Organizer AI and open the **Extension options** page.
-2. Enter your OpenAI API key (starts with `sk-`) and optionally choose a model (defaults to `gpt-4o-mini`).
-3. Adjust preferences:
+1. In Chrome's extensions list, open **Details** for Tab Organizer AI and click **Extension options**.
+2. Enter your OpenAI API key (starts with `sk-`) and optionally choose a model (default: `gpt-4o-mini`).
+3. Review the organizer preferences:
    - Keep at least one tab per domain.
    - Preserve pinned tabs.
    - Maximum tabs per group.
-   - Dry-run preview before applying changes.
-4. Click **Save changes**. The key and settings are stored locally via `chrome.storage.sync` and only used to call the OpenAI API.
+   - Default dry-run behavior for AI and No-LLM modes.
+4. Click **Save changes**. Your key and settings are stored locally via `chrome.storage.sync` and are only used when the service worker calls the OpenAI API.
 
-## Usage
+## Organizing your tabs
 
-1. Open the popup from the extension toolbar.
-2. Provide optional guidance in the multiline field (e.g., "Group by project" or "Prioritize research vs entertainment").
-3. Choose how to organize:
-   - **Organize (LLM)** runs the OpenAI-powered planner. If dry-run is enabled you can review the preview and press **Apply plan**.
-   - **Organize (No-LLM)** stays offline and applies your deterministic rules. Enable *Dry-run (No-LLM)* in the popup to inspect the plan before committing.
-4. Status updates and any errors are shown at the bottom of the popup, e.g. `Closed 4 dupes · Organized 3 groups` or a dry-run summary.
+1. Open the popup from the extensions toolbar.
+2. Add optional guidance in the multiline text box (for example, “Group by client projects” or “Separate research from entertainment”).
+3. Choose how to run the organizer:
+   - **Organize (LLM)** calls OpenAI with the context from your current window. If dry-run is enabled, review the preview before confirming **Apply plan**.
+   - **Organize (No-LLM)** relies entirely on deterministic rules. Toggle *Dry-run (No-LLM)* in the popup to inspect the plan first.
+4. Status and error messages appear at the bottom of the popup (for example, `Closed 4 dupes · Organized 3 groups`).
 
-## No-LLM mode: rules, dry-run, and examples
+## No-LLM organizer
 
-- Configure deterministic behaviour from the options page under **No-LLM organizer**:
-  - Keep at least one tab per domain, preserve pinned tabs, and optionally cap group size.
-  - Toggle the default *Dry-run (No-LLM)* behaviour.
-  - Provide custom rules as JSON. Each rule can include `name`, `host`, `title`, `path`, and optional `color` fields (regular expressions are supported).
+- Configure the offline rules under **No-LLM organizer** on the options page:
+  - Enforce at-least-one-per-domain, pinned-tab preservation, and maximum group size.
+  - Set the default dry-run preference.
+  - Supply custom JSON rules. Each rule can include `name`, `host`, `title`, and `path` fields (strings or regular expressions), plus an optional `color` for the resulting tab group.
 - The popup's *Dry-run (No-LLM)* checkbox temporarily overrides the saved preference.
-- Example custom rules:
+- Example rule set:
 
   ```json
   [
@@ -55,32 +55,32 @@ A minimal, production-ready Chrome extension (Manifest V3) that uses your own Op
   ]
   ```
 
-- When dry-run is enabled the popup renders the planned duplicates and tab groups so you can confirm before applying.
+- During a dry run, the popup lists which tabs would close and how remaining tabs would be grouped.
 
-## No-LLM advanced logic
+### How the offline logic works
 
-- URLs are aggressively canonicalized before dedupe: protocols are normalized to HTTPS, tracking parameters such as `utm_*`, `gclid`, and `fbclid` are removed, and service-specific identifiers (GitHub repos, Google Docs IDs, YouTube video IDs, Jira tickets, etc.) are preserved so near-duplicates collapse reliably.
-- A deterministic catalog of 200+ rule entries covers popular developer, productivity, communication, shopping, travel, finance, and media sites. Each rule can supply priority, optional Chrome tab-group color, and detailed matching on host/path/title so GitHub PRs, Jira boards, Slack channels, Google Drive folders, airline reservations, and more fall into distinct groups without ML.
-- Tabs that slip past the catalog are scored using keyword tokens extracted from title, host, and path. Lightweight stemming and stop-word filtering power category detection (e.g., "CI/CD", "Observability", "Docs", "News", "Finance"), and the best match is used to generate a descriptive group label.
-- Anything still unmatched is organized by eTLD+1 into "By Domain" groups, ensuring fewer than 5% of tabs fall back to generic buckets.
-- Custom rules from the Options page are merged ahead of the built-in catalog. Patterns accept strings or regular expressions and can optionally provide Chrome tab group colors.
-- All decisions respect pinned tabs and maximum tabs per group, and the dry-run response surfaces both dedupe candidates and final group summaries so you can review before applying.
+- URLs are normalized (HTTPS enforced, tracking parameters stripped) while preserving important identifiers such as GitHub repos, Google Docs IDs, YouTube video IDs, and Jira tickets.
+- A catalog of 200+ built-in patterns covers common developer, productivity, finance, shopping, and media sites. Patterns can define priorities, Chrome tab group colors, and granular host/path/title matching.
+- Tabs not matched by the catalog are scored with lightweight keyword analysis to infer categories such as "CI/CD", "Docs", or "Finance". Remaining tabs fall back to eTLD+1 “By Domain” groups.
+- Custom rules from the options page run ahead of built-in patterns so you can override behavior for specific sites.
+- Pinned tabs and maximum-group limits are always honored. Dry-run responses surface both the dedupe candidates and the planned tab groups for review.
 
-## Permissions rationale
+## Permissions
 
-- `storage`: save your API key, model, and organization preferences.
-- `tabs`: read metadata (title, URL, pinned, active) and close duplicates in the current window.
-- `tabGroups`: create, update, and clean up Chrome tab groups during organization.
-- `host_permissions` (`<all_urls>`): required to read tab URLs for deduplication and grouping context; no network requests are made to page content.
+- `storage` – Save your API key, model choice, and organizer preferences.
+- `tabs` – Read tab metadata (title, URL, pinned, active) and close duplicates in the current window.
+- `tabGroups` – Create, update, and clean up Chrome tab groups while organizing.
+- `host_permissions` (`<all_urls>`) – Required to read tab URLs for deduplication and grouping context; no page content is modified.
 
-## Privacy & network behavior
+## Privacy and network behavior
 
-- The extension uses your API key exclusively to call `https://api.openai.com/v1/chat/completions`.
+- The extension uses your API key solely for requests to `https://api.openai.com/v1/chat/completions`.
 - No analytics, telemetry, or third-party network calls.
-- All processing happens in the background service worker—no content scripts are injected into web pages.
+- All processing runs in the background service worker; the extension never injects content scripts into web pages.
 
 ## Development notes
 
-- Built with plain HTML, CSS, and JavaScript (no bundlers).
-- Manifest V3 with an ES module service worker.
-- Code is organized into small modules: `llm.js` for OpenAI calls, `tab_utils.js` for tab analysis, and UI scripts for popup/options pages.
+- Plain HTML, CSS, and JavaScript—no bundlers or frameworks.
+- Manifest V3 extension with an ES module service worker.
+- Module organization: `llm.js` handles OpenAI requests, `tab_utils.js` analyzes tabs, and the popup/options scripts drive the UI.
+
