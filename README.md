@@ -1,6 +1,7 @@
 # Tab Organizer AI
 
 A minimal, production-ready Chrome extension (Manifest V3) that uses your own OpenAI API key to deduplicate and group the tabs in your current Chrome window.
+![Alt text](/TabOrgAI.png)
 
 ## Features
 
