@@ -26,6 +26,10 @@
         margin: 0;
         font-size: 1.5rem;
       }
+      h2 {
+        margin: 16px 0 8px;
+        font-size: 1.1rem;
+      }
       form {
         display: grid;
         gap: 16px;
@@ -47,7 +51,21 @@
         font-family: inherit;
         background: #ffffff;
       }
+      textarea {
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #cbd5f5;
+        font-size: 0.95rem;
+        font-family: inherit;
+        background: #ffffff;
+        resize: vertical;
+        min-height: 160px;
+      }
       input:focus {
+        outline: 2px solid #2563eb;
+        outline-offset: 1px;
+      }
+      textarea:focus {
         outline: 2px solid #2563eb;
         outline-offset: 1px;
       }
@@ -88,6 +106,7 @@
       <h1>Tab Organizer settings</h1>
       <p>Store your OpenAI key and choose how the extension handles duplicates and tab groups.</p>
       <form id="options-form">
+        <h2>AI organizer</h2>
         <label for="apiKey">
           OpenAI API key
           <input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="sk-..." required />
@@ -99,6 +118,13 @@
           <small>Use any compatible Chat Completions model from your OpenAI account.</small>
         </label>
         <label class="checkbox-group">
+          <input type="checkbox" id="dryRun" name="dryRun" />
+          Enable dry-run preview before applying changes (LLM)
+        </label>
+
+        <h2>No-LLM organizer</h2>
+        <p>Configure deterministic deduping and grouping behaviour when you organize without the language model.</p>
+        <label class="checkbox-group">
           <input type="checkbox" id="keepDomain" name="keepDomain" />
           Keep at least one tab per domain
         </label>
@@ -109,11 +135,18 @@
         <label for="maxTabs">
           Max tabs per group
           <input id="maxTabs" name="maxTabs" type="number" min="2" max="24" step="1" />
+          <small>Leave blank to use the default size.</small>
         </label>
         <label class="checkbox-group">
-          <input type="checkbox" id="dryRun" name="dryRun" />
-          Enable dry-run preview before applying changes
+          <input type="checkbox" id="dryRunNoLLM" name="dryRunNoLLM" />
+          Enable dry-run preview (No-LLM)
         </label>
+        <label for="userRules">
+          Custom grouping rules (JSON)
+          <textarea id="userRules" name="userRules" rows="8" spellcheck="false"></textarea>
+          <small>Provide an array of rules. Each rule can match <code>host</code>, <code>title</code>, or <code>path</code> using regular expressions.</small>
+        </label>
+
         <button type="submit">Save changes</button>
         <p id="status" role="status" aria-live="polite"></p>
       </form>

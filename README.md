@@ -9,6 +9,7 @@ A minimal, production-ready Chrome extension (Manifest V3) that uses your own Op
 - AI-powered grouping that creates or updates Chrome tab groups using concise intent-based names.
 - Dry-run preview option to inspect the plan before applying changes.
 - Respect for pinned tabs and per-domain safeguards.
+- Offline "No-LLM" organizer that applies deterministic rules, grouping, and dry-run previews without calling OpenAI.
 
 ## Installation
 
@@ -32,10 +33,28 @@ A minimal, production-ready Chrome extension (Manifest V3) that uses your own Op
 
 1. Open the popup from the extension toolbar.
 2. Provide optional guidance in the multiline field (e.g., "Group by project" or "Prioritize research vs entertainment").
-3. Press **Organize**.
-   - If dry-run is enabled, review the preview and press **Apply plan** to execute.
-   - Otherwise, the service worker will immediately close duplicates, create/update tab groups, and tidy empty ones.
-4. Status updates and any errors are shown at the bottom of the popup.
+3. Choose how to organize:
+   - **Organize (LLM)** runs the OpenAI-powered planner. If dry-run is enabled you can review the preview and press **Apply plan**.
+   - **Organize (No-LLM)** stays offline and applies your deterministic rules. Enable *Dry-run (No-LLM)* in the popup to inspect the plan before committing.
+4. Status updates and any errors are shown at the bottom of the popup, e.g. `Closed 4 dupes · Organized 3 groups` or a dry-run summary.
+
+## No-LLM mode: rules, dry-run, and examples
+
+- Configure deterministic behaviour from the options page under **No-LLM organizer**:
+  - Keep at least one tab per domain, preserve pinned tabs, and optionally cap group size.
+  - Toggle the default *Dry-run (No-LLM)* behaviour.
+  - Provide custom rules as JSON. Each rule can include `name`, `host`, `title`, `path`, and optional `color` fields (regular expressions are supported).
+- The popup's *Dry-run (No-LLM)* checkbox temporarily overrides the saved preference.
+- Example custom rules:
+
+  ```json
+  [
+    { "name": "GitHub PRs", "host": "github\\.com", "path": "/pull" },
+    { "name": "Docs", "host": "(docs|drive)\\.google\\.com" }
+  ]
+  ```
+
+- When dry-run is enabled the popup renders the planned duplicates and tab groups so you can confirm before applying.
 
 ## Permissions rationale
 
