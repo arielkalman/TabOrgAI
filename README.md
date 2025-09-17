@@ -37,6 +37,7 @@ Tab Organizer AI is a Manifest V3 Chrome extension that keeps the current browse
 3. Choose how to run the organizer:
    - **Organize (LLM)** calls OpenAI with the context from your current window. If dry-run is enabled, review the preview before confirming **Apply plan**.
    - **Organize (No-LLM)** relies entirely on deterministic rules. Toggle *Dry-run (No-LLM)* in the popup to inspect the plan first.
+   - **Close duplicates** immediately removes redundant tabs using your saved preferences for pinned tabs and per-domain safeguards.
 4. Status and error messages appear at the bottom of the popup (for example, `Closed 4 dupes · Organized 3 groups`).
 
 ## No-LLM organizer
