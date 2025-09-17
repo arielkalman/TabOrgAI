@@ -38,7 +38,11 @@ const TRACKING_PARAM_NAMES = new Set([
   's',
   'feature',
   't',
-  'dclid'
+  'dclid',
+  'msclkid',
+  'scid',
+  'oly_enc_id',
+  'oly_anon_id'
 ]);
 
 const STOP_WORDS = new Set([
@@ -1095,819 +1099,461 @@ function deriveLinkedInSuffix(tabInfo) {
   return 'Feed';
 }
 
+const CATEGORY_ORDER = [
+  'Work/PM',
+  'Dev/Code',
+  'Cloud/Infra',
+  'Docs/Files',
+  'Comms',
+  'Research/Learning',
+  'Maps/Travel',
+  'Shopping',
+  'News/Media',
+  'Other'
+];
+
+const CATEGORY_COLOR_MAP = new Map([
+  ['Work/PM', 'yellow'],
+  ['Dev/Code', 'blue'],
+  ['Cloud/Infra', 'purple'],
+  ['Docs/Files', 'green'],
+  ['Comms', 'cyan'],
+  ['Research/Learning', 'pink'],
+  ['Maps/Travel', 'orange'],
+  ['Shopping', 'red'],
+  ['News/Media', 'pink'],
+  ['Other', 'grey']
+]);
+
+const CATEGORY_PRIORITY = new Map(
+  CATEGORY_ORDER.map((name, index) => [name, CATEGORY_ORDER.length - index])
+);
+
+const CATEGORY_RULE_DEFINITIONS = {
+  'Work/PM': {
+    hosts: [
+      ['Jira', 'atlassian.net'],
+      ['Jira', 'jira.com'],
+      ['Linear', 'linear.app'],
+      ['Trello', 'trello.com'],
+      ['Asana', 'asana.com'],
+      ['Monday', 'monday.com'],
+      ['ClickUp', 'clickup.com'],
+      ['Notion', 'notion.so'],
+      ['Notion', 'notion.site'],
+      ['Confluence', 'confluence.com'],
+      ['Shortcut', 'app.shortcut.com'],
+      ['Productboard', 'productboard.com']
+    ]
+  },
+  'Dev/Code': {
+    hosts: [
+      ['GitHub', 'github.com'],
+      ['GitHub Gist', 'gist.github.com'],
+      ['GitLab', 'gitlab.com'],
+      ['Bitbucket', 'bitbucket.org'],
+      ['Azure DevOps', 'dev.azure.com'],
+      ['Sourcegraph', 'sourcegraph.com'],
+      ['npm', 'npmjs.com'],
+      ['PyPI', 'pypi.org'],
+      ['RubyGems', 'rubygems.org'],
+      ['pkg.go.dev', 'pkg.go.dev'],
+      ['crates.io', 'crates.io'],
+      ['Docker Hub', 'hub.docker.com']
+    ]
+  },
+  'Cloud/Infra': {
+    hosts: [
+      ['AWS Console', 'console.aws.amazon.com'],
+      ['GCP Console', 'console.cloud.google.com'],
+      ['GCP', 'cloud.google.com'],
+      ['Azure Portal', 'portal.azure.com'],
+      ['Cloudflare', 'cloudflare.com'],
+      ['Vercel', 'vercel.com'],
+      ['Render', 'render.com'],
+      ['Railway', 'railway.app'],
+      ['Fly.io', 'fly.io'],
+      ['Heroku', 'heroku.com'],
+      ['Supabase', 'supabase.com'],
+      ['PlanetScale', 'planetscale.com'],
+      ['Datadog', 'datadoghq.com'],
+      ['New Relic', 'newrelic.com'],
+      ['Grafana', 'grafana.com'],
+      ['Sentry', 'sentry.io'],
+      ['PagerDuty', 'pagerduty.com'],
+      ['CircleCI', 'circleci.com'],
+      ['Buildkite', 'buildkite.com']
+    ],
+    hostRegexes: [
+      ['AWS', 'aws\\.amazon\\.com$'],
+      ['AWS', 'amazonaws\\.com$']
+    ]
+  },
+  'Docs/Files': {
+    hosts: [
+      ['Google Docs', 'docs.google.com'],
+      ['Google Drive', 'drive.google.com'],
+      ['Dropbox', 'dropbox.com'],
+      ['Box', 'box.com'],
+      ['OneDrive', 'onedrive.live.com'],
+      ['SharePoint', 'sharepoint.com'],
+      ['Office 365', 'office.com']
+    ]
+  },
+  'Comms': {
+    hosts: [
+      ['Gmail', 'mail.google.com'],
+      ['Outlook', 'outlook.office.com'],
+      ['Outlook', 'outlook.live.com'],
+      ['Teams', 'teams.microsoft.com'],
+      ['Slack', 'slack.com'],
+      ['Discord', 'discord.com'],
+      ['Telegram', 'web.telegram.org'],
+      ['WhatsApp', 'web.whatsapp.com'],
+      ['Zoom', 'zoom.us'],
+      ['Google Meet', 'meet.google.com'],
+      ['Google Calendar', 'calendar.google.com'],
+      ['Calendly', 'calendly.com']
+    ]
+  },
+  'Research/Learning': {
+    hosts: [
+      ['Google Scholar', 'scholar.google.com'],
+      ['arXiv', 'arxiv.org'],
+      ['Stack Overflow', 'stackoverflow.com'],
+      ['Stack Exchange', 'stackexchange.com'],
+      ['MDN', 'developer.mozilla.org'],
+      ['Wikipedia', 'wikipedia.org'],
+      ['Medium', 'medium.com'],
+      ['Dev.to', 'dev.to'],
+      ['freeCodeCamp', 'freecodecamp.org']
+    ],
+    paths: [
+      { label: 'Google Search', host: 'google.com', path: '^/(?:search|webhp)' }
+    ]
+  },
+  'Maps/Travel': {
+    hosts: [
+      ['Google Maps', 'maps.google.com'],
+      ['Booking', 'booking.com'],
+      ['Airbnb', 'airbnb.com'],
+      ['Expedia', 'expedia.com'],
+      ['Kayak', 'kayak.com'],
+      ['Skyscanner', 'skyscanner.com'],
+      ['Skyscanner', 'skyscanner.net'],
+      ['Uber', 'uber.com'],
+      ['Lyft', 'lyft.com'],
+      ['Tripadvisor', 'tripadvisor.com']
+    ],
+    paths: [
+      { label: 'Google Maps', host: 'google.com', path: '^/maps' }
+    ]
+  },
+  'Shopping': {
+    hosts: [
+      ['Amazon', 'amazon.com'],
+      ['eBay', 'ebay.com'],
+      ['AliExpress', 'aliexpress.com'],
+      ['Etsy', 'etsy.com'],
+      ['Walmart', 'walmart.com'],
+      ['Target', 'target.com'],
+      ['Best Buy', 'bestbuy.com'],
+      ['Costco', 'costco.com']
+    ],
+    hostRegexes: [
+      ['Amazon', 'amazon\\.[a-z.]+$']
+    ],
+    paths: [
+      { label: 'Amazon Search', host: 'amazon.com', path: '^/s' }
+    ]
+  },
+  'News/Media': {
+    hosts: [
+      ['Hacker News', 'news.ycombinator.com'],
+      ['Reddit', 'reddit.com'],
+      ['TechCrunch', 'techcrunch.com'],
+      ['The Verge', 'theverge.com'],
+      ['NYTimes', 'nytimes.com'],
+      ['Washington Post', 'washingtonpost.com'],
+      ['BBC', 'bbc.com'],
+      ['CNN', 'cnn.com'],
+      ['YouTube', 'youtube.com'],
+      ['Netflix', 'netflix.com'],
+      ['Hulu', 'hulu.com'],
+      ['Spotify', 'spotify.com']
+    ]
+  }
+};
+
+const CATEGORY_KEYWORD_DEFINITIONS = {
+  'Work/PM': {
+    keywords: {
+      jira: 4,
+      issue: 3,
+      ticket: 3,
+      board: 2,
+      sprint: 2,
+      backlog: 2,
+      project: 2,
+      task: 2,
+      kanban: 2,
+      roadmap: 2,
+      story: 2,
+      milestone: 2,
+      notion: 1.5,
+      asana: 3,
+      trello: 3,
+      monday: 3,
+      clickup: 3,
+      productboard: 2
+    },
+    hostHints: ['jira', 'atlassian', 'linear', 'trello', 'asana', 'monday', 'notion', 'clickup', 'shortcut', 'productboard'],
+    pathHints: ['board', 'sprint', 'project', 'kanban'],
+    threshold: 4
+  },
+  'Dev/Code': {
+    keywords: {
+      git: 3,
+      repo: 3,
+      pull: 3,
+      merge: 3,
+      commit: 3,
+      branch: 2,
+      code: 2,
+      diff: 2,
+      issue: 2,
+      pr: 3,
+      review: 2,
+      package: 2,
+      library: 2,
+      sdk: 2,
+      api: 2,
+      ci: 2
+    },
+    hostHints: ['github', 'gitlab', 'bitbucket', 'sourcegraph', 'npm', 'pypi', 'rubygems', 'crates', 'docker'],
+    pathHints: ['pull', 'merge', 'commit', 'blob', 'tree'],
+    threshold: 4
+  },
+  'Cloud/Infra': {
+    keywords: {
+      cloud: 3,
+      aws: 3,
+      gcp: 3,
+      azure: 3,
+      console: 2,
+      cluster: 2,
+      kube: 3,
+      kubernet: 3,
+      deploy: 2,
+      infrastructure: 3,
+      instance: 2,
+      server: 2,
+      pipeline: 2,
+      metric: 2,
+      monitor: 2,
+      log: 2,
+      alert: 2
+    },
+    hostHints: ['aws', 'amazonaws', 'cloud', 'azure', 'cloudflare', 'vercel', 'render', 'railway', 'fly.io', 'heroku', 'supabase', 'planetscale', 'datadog', 'newrelic', 'grafana', 'sentry', 'pagerduty', 'circleci', 'buildkite'],
+    pathHints: ['deploy', 'pipeline', 'console'],
+    threshold: 4
+  },
+  'Docs/Files': {
+    keywords: {
+      doc: 3,
+      docs: 3,
+      sheet: 3,
+      slide: 3,
+      drive: 3,
+      file: 2,
+      folder: 2,
+      pdf: 2,
+      presentation: 2,
+      spreadsheet: 3,
+      notebook: 2,
+      note: 2
+    },
+    hostHints: ['docs.google', 'drive.google', 'dropbox', 'box.com', 'onedrive', 'sharepoint', 'office.com'],
+    pathHints: ['document', 'presentation', 'spreadsheets'],
+    threshold: 4
+  },
+  'Comms': {
+    keywords: {
+      mail: 3,
+      inbox: 3,
+      calendar: 3,
+      meeting: 2,
+      meet: 2,
+      chat: 3,
+      message: 3,
+      call: 2,
+      video: 2,
+      slack: 3,
+      teams: 3,
+      invite: 2,
+      reply: 2
+    },
+    hostHints: ['mail.google', 'outlook', 'teams', 'slack', 'discord', 'telegram', 'whatsapp', 'zoom', 'meet.google', 'calendar.google', 'calendly'],
+    titleHints: ['meeting', 'standup', '1:1'],
+    threshold: 4
+  },
+  'Research/Learning': {
+    keywords: {
+      search: 3,
+      learn: 3,
+      tutorial: 3,
+      guide: 3,
+      reference: 3,
+      docs: 2,
+      wiki: 3,
+      stack: 2,
+      question: 2,
+      answer: 2,
+      blog: 2,
+      analysis: 2,
+      how: 2
+    },
+    hostHints: ['google', 'scholar', 'arxiv', 'stackoverflow', 'stackexchange', 'mozilla', 'wikipedia', 'medium', 'dev.to', 'freecodecamp'],
+    pathHints: ['search', 'learn'],
+    threshold: 3
+  },
+  'Maps/Travel': {
+    keywords: {
+      map: 3,
+      maps: 3,
+      travel: 3,
+      trip: 3,
+      flight: 3,
+      hotel: 3,
+      booking: 3,
+      airbnb: 3,
+      route: 2,
+      direction: 2,
+      itinerary: 2,
+      ride: 2,
+      airport: 2
+    },
+    hostHints: ['maps.google', 'booking', 'airbnb', 'expedia', 'kayak', 'skyscanner', 'uber', 'lyft', 'tripadvisor'],
+    pathHints: ['maps', 'travel'],
+    threshold: 3
+  },
+  'Shopping': {
+    keywords: {
+      buy: 3,
+      cart: 3,
+      checkout: 3,
+      order: 3,
+      product: 3,
+      price: 2,
+      deal: 2,
+      sale: 2,
+      shop: 2,
+      wishlist: 2,
+      shipping: 2,
+      basket: 2
+    },
+    hostHints: ['amazon', 'ebay', 'aliexpress', 'etsy', 'walmart', 'target', 'bestbuy', 'costco'],
+    pathHints: ['cart', 'checkout'],
+    threshold: 3
+  },
+  'News/Media': {
+    keywords: {
+      news: 3,
+      headline: 3,
+      article: 3,
+      review: 3,
+      reddit: 3,
+      hn: 2,
+      video: 3,
+      watch: 3,
+      stream: 3,
+      episode: 2,
+      podcast: 2,
+      feed: 2,
+      breaking: 3,
+      story: 2
+    },
+    hostHints: ['news.ycombinator', 'reddit', 'techcrunch', 'verge', 'nytimes', 'washingtonpost', 'bbc', 'cnn', 'youtube', 'netflix', 'hulu', 'spotify'],
+    titleHints: ['breaking', 'episode', 'season'],
+    threshold: 3
+  }
+};
+
 const RULES_CATALOG = buildRulesCatalog();
 const COMPILED_RULES = compileRuleCatalog(RULES_CATALOG);
+const KEYWORD_MAP = buildKeywordMap();
 
-/**
- * Build the comprehensive rules catalog covering 200+ services.
- */
+const CATEGORY_NEIGHBORS = new Map([
+  ['Work/PM', ['Dev/Code', 'Docs/Files', 'Comms']],
+  ['Dev/Code', ['Cloud/Infra', 'Research/Learning', 'Work/PM']],
+  ['Cloud/Infra', ['Dev/Code', 'Comms', 'Work/PM']],
+  ['Docs/Files', ['Work/PM', 'Comms', 'Research/Learning']],
+  ['Comms', ['Work/PM', 'Docs/Files', 'Cloud/Infra']],
+  ['Research/Learning', ['Dev/Code', 'Docs/Files', 'News/Media']],
+  ['Maps/Travel', ['Shopping', 'News/Media', 'Other']],
+  ['Shopping', ['News/Media', 'Maps/Travel', 'Other']],
+  ['News/Media', ['Research/Learning', 'Comms', 'Other']],
+  ['Other', ['News/Media', 'Shopping', 'Maps/Travel']]
+]);
 function buildRulesCatalog() {
   const rules = [];
-
-  // GitHub detailed views.
-  rules.push(
-    {
-      name: 'GitHub – Pull Requests',
-      color: 'green',
-      priority: 1200,
-      match: { hostRegex: hostPattern('github.com'), pathRegex: /\/[^/]+\/[^/]+\/pull\//i },
-      deriveName: (tabInfo) => deriveGitHubName(tabInfo, 'GitHub – Pull Requests', 'PRs', 'green')
-    },
-    {
-      name: 'GitHub – Issues',
-      color: 'orange',
-      priority: 1180,
-      match: { hostRegex: hostPattern('github.com'), pathRegex: /\/[^/]+\/[^/]+\/issues\//i },
-      deriveName: (tabInfo) => deriveGitHubName(tabInfo, 'GitHub – Issues', 'Issues', 'orange')
-    },
-    {
-      name: 'GitHub – Discussions',
-      color: 'purple',
-      priority: 1170,
-      match: { hostRegex: hostPattern('github.com'), pathRegex: /\/[^/]+\/[^/]+\/discussions\//i },
-      deriveName: (tabInfo) => deriveGitHubName(tabInfo, 'GitHub – Discussions', 'Discussions', 'purple')
-    },
-    {
-      name: 'GitHub – Code',
-      color: 'blue',
-      priority: 1150,
-      match: { hostRegex: hostPattern('github.com'), pathRegex: /\/[^/]+\/[^/]+\/(?:blob|tree)\//i },
-      deriveName: (tabInfo) => deriveGitHubName(tabInfo, 'GitHub – Code', 'Code', 'blue')
-    },
-    {
-      name: 'GitHub – Releases',
-      color: 'grey',
-      priority: 1140,
-      match: { hostRegex: hostPattern('github.com'), pathRegex: /\/[^/]+\/[^/]+\/releases/i },
-      deriveName: (tabInfo) => deriveGitHubName(tabInfo, 'GitHub – Releases', 'Releases', 'grey')
-    },
-    {
-      name: 'GitHub – Actions',
-      color: 'cyan',
-      priority: 1130,
-      match: { hostRegex: hostPattern('github.com'), pathRegex: /\/[^/]+\/[^/]+\/actions/i },
-      deriveName: (tabInfo) => deriveGitHubName(tabInfo, 'GitHub – Actions', 'CI/CD', 'cyan')
-    },
-    {
-      name: 'GitHub – Projects',
-      color: 'yellow',
-      priority: 1120,
-      match: { hostRegex: hostPattern('github.com'), pathRegex: /\/[^/]+\/[^/]+\/projects/i },
-      deriveName: (tabInfo) => deriveGitHubName(tabInfo, 'GitHub – Projects', 'Projects', 'yellow')
-    },
-    {
-      name: 'GitHub – Wiki',
-      color: 'blue',
-      priority: 1110,
-      match: { hostRegex: hostPattern('github.com'), pathRegex: /\/[^/]+\/[^/]+\/wiki/i },
-      deriveName: (tabInfo) => deriveGitHubName(tabInfo, 'GitHub – Wiki', 'Wiki', 'blue')
-    },
-    {
-      name: 'GitHub – Gists',
-      color: 'green',
-      priority: 1090,
-      match: { hostRegex: hostPattern('gist.github.com') },
-      deriveName: () => ({ name: 'GitHub – Gists', color: 'green' })
-    },
-    {
-      name: 'GitHub – Notifications',
-      color: 'purple',
-      priority: 1080,
-      match: { hostRegex: hostPattern('github.com'), pathRegex: /^\/notifications/i },
-      deriveName: () => ({ name: 'GitHub – Notifications', color: 'purple' })
+  for (const [category, definition] of Object.entries(CATEGORY_RULE_DEFINITIONS)) {
+    const color = CATEGORY_COLOR_MAP.get(category);
+    const priority = definition.priority ?? 800;
+    for (const [label, host] of definition.hosts || []) {
+      rules.push({
+        name: category,
+        category,
+        label,
+        color,
+        priority,
+        match: { host }
+      });
     }
-  );
-
-  // GitLab and other code hosts.
-  pushSimpleRules(
-    rules,
-    [
-      {
-        name: 'GitLab – Merge Requests',
-        host: 'gitlab.com',
-        path: /\/([^/]+\/[^/]+\/)?-\/merge_requests/i,
-        color: 'green',
-        priority: 1050,
-        deriveName: (tabInfo) => {
-          const repo = extractGitHubRepo(tabInfo.pathSegments);
-          if (repo) {
-            return { name: `GitLab – ${repo.owner}/${repo.repo} – MRs`, color: 'green' };
-          }
-          return { name: 'GitLab – Merge Requests', color: 'green' };
-        }
-      },
-      {
-        name: 'GitLab – Issues',
-        host: 'gitlab.com',
-        path: /\/([^/]+\/[^/]+\/)?-\/issues/i,
-        color: 'orange',
-        priority: 1040
-      },
-      {
-        name: 'GitLab – Pipelines',
-        host: 'gitlab.com',
-        path: /\/([^/]+\/[^/]+\/)?-\/pipelines/i,
-        color: 'cyan',
-        priority: 1030
-      },
-      {
-        name: 'GitLab – Snippets',
-        host: 'gitlab.com',
-        path: /\/snippets/i,
-        color: 'blue',
-        priority: 1020
-      }
-    ],
-    { priority: 1020 }
-  );
-
-  pushSimpleRules(
-    rules,
-    [
-      { name: 'Bitbucket – Pull Requests', host: 'bitbucket.org', path: /\/pull-requests\//i, color: 'green', priority: 990 },
-      { name: 'Bitbucket – Issues', host: 'bitbucket.org', path: /\/issues\//i, color: 'orange', priority: 980 },
-      { name: 'Bitbucket – Pipelines', host: 'bitbucket.org', path: /\/pipelines\//i, color: 'cyan', priority: 970 }
-    ]
-  );
-
-  pushSimpleRules(
-    rules,
-    [
-      { name: 'Azure DevOps – Repos', host: 'dev.azure.com', path: /\/[^/]+\/[^/]+\/(?:_git|_build)/i, color: 'blue', priority: 960 },
-      { name: 'Azure DevOps – Boards', host: 'dev.azure.com', path: /\/board/i, color: 'yellow', priority: 950 },
-      { name: 'Azure DevOps – Pipelines', host: 'dev.azure.com', path: /\/pipeline/i, color: 'cyan', priority: 940 },
-      { name: 'Azure DevOps – Artifacts', host: 'dev.azure.com', path: /\/artifacts/i, color: 'purple', priority: 930 }
-    ]
-  );
-
-  const STACK_SITES = [
-    'stackoverflow.com',
-    'serverfault.com',
-    'superuser.com',
-    'askubuntu.com',
-    'mathoverflow.net',
-    'stackapps.com',
-    'gaming.stackexchange.com',
-    'math.stackexchange.com',
-    'stats.stackexchange.com',
-    'unix.stackexchange.com',
-    'security.stackexchange.com',
-    'tex.stackexchange.com',
-    'travel.stackexchange.com',
-    'physics.stackexchange.com',
-    'dba.stackexchange.com',
-    'electronics.stackexchange.com',
-    'softwareengineering.stackexchange.com',
-    'codereview.stackexchange.com',
-    'webmasters.stackexchange.com',
-    'stackprinter.appspot.com'
-  ];
-  pushSimpleRules(
-    rules,
-    STACK_SITES.map((host) => ({
-      name: `Stack Exchange – ${host.replace('.stackexchange.com', '').replace('.com', '')}`,
-      host,
-      color: 'green',
-      priority: 920
-    })),
-    { priority: 920 }
-  );
-
-  // Developer documentation and registries.
-  pushSimpleRules(rules, [
-    { name: 'MDN Web Docs', host: 'developer.mozilla.org', color: 'blue', priority: 900 },
-    { name: 'npm Registry', host: 'www.npmjs.com', path: /\/package\//i, color: 'orange', priority: 890 },
-    { name: 'PyPI', host: 'pypi.org', path: /\/project\//i, color: 'orange', priority: 890 },
-    { name: 'RubyGems', host: 'rubygems.org', path: /\/gems\//i, color: 'red', priority: 880 },
-    { name: 'pkg.go.dev', host: 'pkg.go.dev', color: 'blue', priority: 880 },
-    { name: 'crates.io', host: 'crates.io', path: /\/crates\//i, color: 'orange', priority: 880 },
-    { name: 'Docker Hub', host: 'hub.docker.com', path: /\/(?:r|_\/)\//i, color: 'cyan', priority: 870 },
-    { name: 'Packagist', host: 'packagist.org', path: /\/packages\//i, color: 'orange', priority: 860 },
-    { name: 'Maven Central', host: 'search.maven.org', color: 'orange', priority: 850 },
-    { name: 'NuGet', host: 'www.nuget.org', path: /\/packages\//i, color: 'purple', priority: 850 },
-    { name: 'Homebrew Formulae', host: 'formulae.brew.sh', color: 'green', priority: 830 },
-    { name: 'Helm Hub', host: 'artifacthub.io', path: /\/packages\//i, color: 'cyan', priority: 830 },
-    { name: 'Terraform Registry', host: 'registry.terraform.io', path: /\/providers\//i, color: 'green', priority: 820 },
-    { name: 'Ansible Galaxy', host: 'galaxy.ansible.com', color: 'yellow', priority: 820 },
-    { name: 'Conda Forge', host: 'anaconda.org', color: 'green', priority: 810 },
-    { name: 'Kubernetes Docs', host: 'kubernetes.io', path: /\/docs\//i, color: 'cyan', priority: 810 },
-    { name: 'Helm Docs', host: 'helm.sh', path: /\/docs\//i, color: 'cyan', priority: 800 },
-    { name: 'Terraform Docs', host: 'developer.hashicorp.com', path: /\/terraform\//i, color: 'green', priority: 800 },
-    { name: 'Ansible Docs', host: 'docs.ansible.com', color: 'yellow', priority: 790 },
-    { name: 'Prometheus Docs', host: 'prometheus.io', path: /\/docs\//i, color: 'orange', priority: 790 },
-    { name: 'Grafana Docs', host: 'grafana.com', path: /\/docs\//i, color: 'purple', priority: 780 },
-    { name: 'Sentry Docs', host: 'docs.sentry.io', color: 'purple', priority: 780 },
-    { name: 'New Relic Docs', host: 'docs.newrelic.com', color: 'green', priority: 780 }
-  ]);
-
-  pushSimpleRules(rules, [
-    { name: 'Python Docs', host: 'docs.python.org', color: 'blue', priority: 790 },
-    { name: 'Node.js Docs', host: 'nodejs.org', path: /\/docs\//i, color: 'green', priority: 790 },
-    { name: 'React Docs', host: 'react.dev', color: 'cyan', priority: 780 },
-    { name: 'Next.js Docs', host: 'nextjs.org', path: /\/docs\//i, color: 'cyan', priority: 780 },
-    { name: 'Angular Docs', host: 'angular.io', path: /\/docs\//i, color: 'red', priority: 780 },
-    { name: 'Vue Docs', host: 'vuejs.org', path: /\/guide/i, color: 'green', priority: 770 },
-    { name: 'Svelte Docs', host: 'svelte.dev', path: /\/docs\//i, color: 'orange', priority: 770 },
-    { name: 'Django Docs', host: 'docs.djangoproject.com', color: 'green', priority: 760 },
-    { name: 'Flask Docs', host: 'flask.palletsprojects.com', color: 'orange', priority: 760 },
-    { name: 'Rails Guides', host: 'guides.rubyonrails.org', color: 'red', priority: 750 },
-    { name: 'Spring Docs', host: 'docs.spring.io', color: 'green', priority: 750 },
-    { name: 'Java Docs', host: 'docs.oracle.com', path: /\/javase/i, color: 'blue', priority: 740 },
-    { name: 'Kotlin Docs', host: 'kotlinlang.org', path: /\/docs\//i, color: 'purple', priority: 740 },
-    { name: 'Scala Docs', host: 'docs.scala-lang.org', color: 'red', priority: 730 },
-    { name: 'Rust Docs', host: 'doc.rust-lang.org', color: 'orange', priority: 730 },
-    { name: 'Go Docs', host: 'go.dev', path: /\/doc\//i, color: 'blue', priority: 720 },
-    { name: 'C++ Reference', host: 'en.cppreference.com', color: 'grey', priority: 720 },
-    { name: 'Microsoft Learn', host: 'learn.microsoft.com', color: 'blue', priority: 710 },
-    { name: 'AWS Docs', host: 'docs.aws.amazon.com', color: 'orange', priority: 710 },
-    { name: 'Google Cloud Docs', host: 'cloud.google.com', path: /\/docs\//i, color: 'blue', priority: 700 },
-    { name: 'Azure Docs', host: 'learn.microsoft.com', path: /azure/i, color: 'blue', priority: 700 },
-    { name: 'Oracle Cloud Docs', host: 'docs.oracle.com', path: /\/en\/cloud\//i, color: 'orange', priority: 700 },
-    { name: 'IBM Cloud Docs', host: 'cloud.ibm.com', path: /\/docs\//i, color: 'blue', priority: 690 },
-    { name: 'Salesforce Docs', host: 'developer.salesforce.com', path: /\/docs\//i, color: 'blue', priority: 690 },
-    { name: 'Elastic Docs', host: 'www.elastic.co', path: /\/guide\//i, color: 'orange', priority: 680 },
-    { name: 'MongoDB Docs', host: 'www.mongodb.com', path: /\/docs\//i, color: 'green', priority: 670 },
-    { name: 'PostgreSQL Docs', host: 'www.postgresql.org', path: /\/docs\//i, color: 'blue', priority: 670 },
-    { name: 'MySQL Docs', host: 'dev.mysql.com', path: /\/doc\//i, color: 'blue', priority: 660 },
-    { name: 'Redis Docs', host: 'redis.io', path: /\/docs\//i, color: 'red', priority: 660 },
-    { name: 'Kafka Docs', host: 'kafka.apache.org', path: /\/documentation/i, color: 'orange', priority: 650 },
-    { name: 'Spark Docs', host: 'spark.apache.org', path: /\/docs\//i, color: 'orange', priority: 650 },
-    { name: 'Hadoop Docs', host: 'hadoop.apache.org', path: /\/docs\//i, color: 'yellow', priority: 640 },
-    { name: 'Prometheus Docs (Alt)', host: 'prometheus.io', path: /\/docs\/prometheus\//i, color: 'orange', priority: 630 },
-    { name: 'Grafana Cloud Docs', host: 'grafana.com', path: /\/docs\/grafana-cloud/i, color: 'purple', priority: 630 }
-  ]);
-
-  // Work and project management.
-  rules.push(
-    {
-      name: 'Jira – Issues',
-      color: 'orange',
-      priority: 880,
-      match: { hostRegex: /atlassian\.net$/i, pathRegex: /\/browse\//i },
-      deriveName: (tabInfo) => {
-        const key = extractJiraKey(tabInfo);
-        return key ? { name: `Jira – ${key}`, color: 'orange' } : { name: 'Jira – Issues', color: 'orange' };
-      }
-    },
-    {
-      name: 'Jira – Boards',
-      color: 'blue',
-      priority: 870,
-      match: { hostRegex: /atlassian\.net$/i, pathRegex: /\/jira\/software/i },
-      deriveName: () => ({ name: 'Jira – Boards', color: 'blue' })
-    },
-    {
-      name: 'Jira – Roadmaps',
-      color: 'cyan',
-      priority: 860,
-      match: { hostRegex: /atlassian\.net$/i, pathRegex: /\/jira\/core/i },
-      deriveName: () => ({ name: 'Jira – Roadmaps', color: 'cyan' })
-    },
-    {
-      name: 'Linear Issues',
-      color: 'green',
-      priority: 850,
-      match: { hostRegex: hostPattern('linear.app'), pathRegex: /\/issue\//i },
-      deriveName: (tabInfo) => {
-        const match = /([A-Z]+-\d+)/.exec(tabInfo.path);
-        return match ? { name: `Linear – ${match[1]}`, color: 'green' } : { name: 'Linear – Issues', color: 'green' };
-      }
-    },
-    {
-      name: 'Linear Views',
-      color: 'cyan',
-      priority: 840,
-      match: { hostRegex: hostPattern('linear.app') },
-      deriveName: () => ({ name: 'Linear – Workspace', color: 'cyan' })
-    },
-    {
-      name: 'YouTrack Issues',
-      color: 'orange',
-      priority: 830,
-      match: { hostRegex: /(youtrack\.cloud|myjetbrains\.com)$/i, pathRegex: /\/issue\//i },
-      deriveName: (tabInfo) => {
-        const match = /([A-Z0-9_]+-\d+)/i.exec(tabInfo.path);
-        return match ? { name: `YouTrack – ${match[1].toUpperCase()}`, color: 'orange' } : { name: 'YouTrack – Issues', color: 'orange' };
-      }
+    for (const [label, pattern] of definition.hostRegexes || []) {
+      rules.push({
+        name: category,
+        category,
+        label,
+        color,
+        priority,
+        match: { hostRegex: new RegExp(pattern, 'i') }
+      });
     }
-  );
-
-  pushSimpleRules(rules, [
-    { name: 'Asana', host: 'app.asana.com', color: 'purple', priority: 820 },
-    { name: 'Trello Boards', host: 'trello.com', path: /\/b\//i, color: 'green', priority: 820 },
-    { name: 'Notion Workspace', host: 'notion.so', color: 'grey', priority: 810 },
-    { name: 'ClickUp', host: 'app.clickup.com', color: 'cyan', priority: 810 },
-    { name: 'Monday.com', host: 'monday.com', color: 'yellow', priority: 800 },
-    { name: 'Basecamp', host: '3.basecamp.com', color: 'pink', priority: 800 },
-    { name: 'Confluence', host: 'atlassian.net', path: /\/wiki\//i, color: 'blue', priority: 800 },
-    { name: 'Airtable Bases', host: 'airtable.com', path: /\/app[a-z0-9]+/i, color: 'cyan', priority: 790 },
-    { name: 'Coda Docs', host: 'coda.io', path: /\/docs\//i, color: 'blue', priority: 790 },
-    { name: 'Quip Docs', host: 'quip.com', path: /\/doc\//i, color: 'blue', priority: 780 },
-    { name: 'Miro Boards', host: 'miro.com', path: /\/app\//i, color: 'yellow', priority: 780 },
-    { name: 'Figma Files', host: 'figma.com', path: /\/file\//i, color: 'purple', priority: 770 },
-    { name: 'Lucidchart', host: 'lucid.app', path: /\/lucidchart\//i, color: 'orange', priority: 770 },
-    { name: 'Smartsheet', host: 'app.smartsheet.com', color: 'green', priority: 760 }
-  ]);
-
-  // Docs and file storage.
-  rules.push(
-    {
-      name: 'Google Docs',
-      color: 'blue',
-      priority: 780,
-      match: { hostRegex: hostPattern('docs.google.com'), pathRegex: /\/document\//i },
-      deriveName: () => ({ name: 'Google Docs', color: 'blue' })
-    },
-    {
-      name: 'Google Sheets',
-      color: 'green',
-      priority: 780,
-      match: { hostRegex: hostPattern('docs.google.com'), pathRegex: /\/(spreadsheets|sheet)\//i },
-      deriveName: () => ({ name: 'Google Sheets', color: 'green' })
-    },
-    {
-      name: 'Google Slides',
-      color: 'yellow',
-      priority: 780,
-      match: { hostRegex: hostPattern('docs.google.com'), pathRegex: /\/presentation\//i },
-      deriveName: () => ({ name: 'Google Slides', color: 'yellow' })
-    },
-    {
-      name: 'Google Drive Folders',
-      color: 'blue',
-      priority: 770,
-      match: { hostRegex: hostPattern('drive.google.com'), pathRegex: /\/drive\/folders/i },
-      deriveName: () => ({ name: 'Google Drive – Folder', color: 'blue' })
-    },
-    {
-      name: 'Google Drive Files',
-      color: 'blue',
-      priority: 770,
-      match: { hostRegex: hostPattern('drive.google.com'), pathRegex: /\/file\/d\//i },
-      deriveName: () => ({ name: 'Google Drive – File', color: 'blue' })
+    for (const entry of definition.paths || []) {
+      rules.push({
+        name: category,
+        category,
+        label: entry.label || category,
+        color,
+        priority,
+        match: { host: entry.host || null, path: entry.path || null }
+      });
     }
-  );
-
-  pushSimpleRules(rules, [
-    { name: 'Office 365 – Word', host: 'office.com', path: /\/word/i, color: 'blue', priority: 760 },
-    { name: 'Office 365 – Excel', host: 'office.com', path: /\/excel/i, color: 'green', priority: 760 },
-    { name: 'Office 365 – PowerPoint', host: 'office.com', path: /\/powerpoint/i, color: 'orange', priority: 760 },
-    { name: 'SharePoint', host: 'sharepoint.com', color: 'blue', priority: 750 },
-    { name: 'Dropbox Files', host: 'dropbox.com', path: /\/home/i, color: 'blue', priority: 750 },
-    { name: 'Box Files', host: 'box.com', path: /\/file/i, color: 'blue', priority: 740 },
-    { name: 'OneDrive', host: 'onedrive.live.com', color: 'blue', priority: 740 },
-    { name: 'Evernote', host: 'evernote.com', color: 'green', priority: 730 },
-    { name: 'Google Keep', host: 'keep.google.com', color: 'yellow', priority: 730 },
-    { name: 'Notability', host: 'notability.com', color: 'purple', priority: 720 },
-    { name: 'Simplenote', host: 'app.simplenote.com', color: 'blue', priority: 720 }
-  ]);
-
-  // Cloud consoles.
-  pushSimpleRules(rules, [
-    { name: 'AWS Console – EC2', host: 'console.aws.amazon.com', path: /ec2/i, color: 'orange', priority: 720 },
-    { name: 'AWS Console – S3', host: 's3.console.aws.amazon.com', color: 'orange', priority: 720 },
-    { name: 'AWS Console – IAM', host: 'console.aws.amazon.com', path: /iam/i, color: 'orange', priority: 720 },
-    { name: 'AWS Console – CloudWatch', host: 'console.aws.amazon.com', path: /cloudwatch/i, color: 'orange', priority: 710 },
-    { name: 'AWS Console – Lambda', host: 'console.aws.amazon.com', path: /lambda/i, color: 'orange', priority: 710 },
-    { name: 'AWS Console – RDS', host: 'console.aws.amazon.com', path: /rds/i, color: 'orange', priority: 710 },
-    { name: 'GCP Console', host: 'console.cloud.google.com', color: 'blue', priority: 720 },
-    { name: 'GCP Cloud Run', host: 'console.cloud.google.com', path: /run/i, color: 'blue', priority: 710 },
-    { name: 'GCP BigQuery', host: 'console.cloud.google.com', path: /bigquery/i, color: 'blue', priority: 710 },
-    { name: 'Azure Portal', host: 'portal.azure.com', color: 'blue', priority: 720 },
-    { name: 'Cloudflare Dashboard', host: 'dash.cloudflare.com', color: 'orange', priority: 700 },
-    { name: 'Vercel Dashboard', host: 'vercel.com', path: /\/dashboard/i, color: 'grey', priority: 700 },
-    { name: 'Netlify Dashboard', host: 'app.netlify.com', color: 'green', priority: 700 },
-    { name: 'Render Dashboard', host: 'dashboard.render.com', color: 'purple', priority: 700 },
-    { name: 'Fly.io Apps', host: 'fly.io', path: /\/apps/i, color: 'cyan', priority: 690 },
-    { name: 'Firebase Console', host: 'console.firebase.google.com', color: 'yellow', priority: 700 },
-    { name: 'Supabase Dashboard', host: 'app.supabase.com', color: 'green', priority: 690 },
-    { name: 'Heroku Dashboard', host: 'dashboard.heroku.com', color: 'purple', priority: 690 },
-    { name: 'Railway Dashboard', host: 'railway.app', path: /\/dashboard/i, color: 'purple', priority: 680 },
-    { name: 'PlanetScale', host: 'app.planetscale.com', color: 'blue', priority: 680 },
-    { name: 'Snowflake Console', host: 'app.snowflake.com', color: 'blue', priority: 680 },
-    { name: 'DigitalOcean Control Panel', host: 'cloud.digitalocean.com', color: 'blue', priority: 680 }
-  ]);
-
-  // Observability, CI/CD, and on-call.
-  pushSimpleRules(rules, [
-    { name: 'Datadog', host: 'app.datadoghq.com', color: 'purple', priority: 670 },
-    { name: 'Grafana', host: 'grafana.com', path: /\/a\/grafana\//i, color: 'purple', priority: 670 },
-    { name: 'Kibana', host: 'kibana', color: 'orange', priority: 660 },
-    { name: 'Elastic Cloud', host: 'cloud.elastic.co', color: 'orange', priority: 660 },
-    { name: 'Sentry', host: 'sentry.io', color: 'purple', priority: 660 },
-    { name: 'New Relic', host: 'one.newrelic.com', color: 'green', priority: 660 },
-    { name: 'PagerDuty', host: 'pagerduty.com', color: 'red', priority: 650 },
-    { name: 'Opsgenie', host: 'app.opsgenie.com', color: 'red', priority: 650 },
-    { name: 'Honeycomb', host: 'ui.honeycomb.io', color: 'orange', priority: 640 },
-    { name: 'Chronosphere', host: 'app.chronosphere.io', color: 'purple', priority: 640 },
-    { name: 'Statuspage', host: 'statuspage.io', color: 'yellow', priority: 640 },
-    { name: 'CircleCI', host: 'circleci.com', color: 'green', priority: 640 },
-    { name: 'Jenkins', host: 'jenkins', color: 'green', priority: 640 },
-    { name: 'GitHub Actions Jobs', host: 'github.com', path: /\/actions\//i, color: 'cyan', priority: 640 },
-    { name: 'GitLab CI Pipelines', host: 'gitlab.com', path: /\/pipelines\//i, color: 'cyan', priority: 640 },
-    { name: 'Buildkite', host: 'buildkite.com', color: 'green', priority: 640 },
-    { name: 'Harness', host: 'app.harness.io', color: 'green', priority: 630 },
-    { name: 'Argo CD', host: 'argocd', color: 'cyan', priority: 630 },
-    { name: 'Prometheus Console', host: 'prometheus', color: 'orange', priority: 630 }
-  ]);
-
-  // Communication tools.
-  rules.push(
-    {
-      name: 'Slack',
-      color: 'green',
-      priority: 760,
-      match: { hostRegex: /slack\.com$/i },
-      deriveName: (tabInfo) => {
-        const derived = deriveSlackName(tabInfo);
-        return derived ? { ...derived, color: 'green' } : { name: 'Slack – Workspace', color: 'green' };
-      }
-    },
-    {
-      name: 'Gmail',
-      color: 'red',
-      priority: 760,
-      match: { hostRegex: hostPattern('mail.google.com') },
-      deriveName: () => ({ name: 'Gmail', color: 'red' })
-    },
-    {
-      name: 'Google Calendar',
-      color: 'yellow',
-      priority: 750,
-      match: { hostRegex: hostPattern('calendar.google.com') },
-      deriveName: () => ({ name: 'Google Calendar', color: 'yellow' })
-    },
-    {
-      name: 'Google Meet',
-      color: 'purple',
-      priority: 740,
-      match: { hostRegex: hostPattern('meet.google.com') },
-      deriveName: () => ({ name: 'Google Meet', color: 'purple' })
-    },
-    {
-      name: 'Zoom Meeting',
-      color: 'purple',
-      priority: 740,
-      match: { hostRegex: hostPattern('zoom.us'), pathRegex: /\/j\//i },
-      deriveName: () => ({ name: 'Zoom Meeting', color: 'purple' })
-    },
-    {
-      name: 'Microsoft Teams',
-      color: 'blue',
-      priority: 740,
-      match: { hostRegex: hostPattern('teams.microsoft.com') },
-      deriveName: () => ({ name: 'Microsoft Teams', color: 'blue' })
-    }
-  );
-
-  pushSimpleRules(rules, [
-    { name: 'Outlook Mail', host: 'outlook.office.com', color: 'blue', priority: 730 },
-    { name: 'Outlook Calendar', host: 'outlook.office.com', path: /calendar/i, color: 'yellow', priority: 730 },
-    { name: 'Google Chat', host: 'chat.google.com', color: 'green', priority: 720 },
-    { name: 'Discord', host: 'discord.com', path: /\/channels\//i, color: 'purple', priority: 720 },
-    { name: 'WhatsApp Web', host: 'web.whatsapp.com', color: 'green', priority: 720 },
-    { name: 'Telegram Web', host: 'web.telegram.org', color: 'blue', priority: 710 },
-    { name: 'Signal Web', host: 'signal.org', path: /\/web/i, color: 'blue', priority: 700 },
-    { name: 'Zoom Dashboard', host: 'zoom.us', path: /\/account/i, color: 'purple', priority: 710 },
-    { name: 'Webex', host: 'webex.com', color: 'blue', priority: 700 },
-    { name: 'Calendly', host: 'calendly.com', color: 'yellow', priority: 700 }
-  ]);
-
-  // Research and learning.
-  pushSimpleRules(rules, [
-    { name: 'Google Scholar', host: 'scholar.google.com', color: 'green', priority: 700 },
-    { name: 'arXiv', host: 'arxiv.org', color: 'grey', priority: 700 },
-    { name: 'Papers with Code', host: 'paperswithcode.com', color: 'blue', priority: 700 },
-    { name: 'Semantic Scholar', host: 'semanticscholar.org', color: 'blue', priority: 690 },
-    { name: 'ResearchGate', host: 'researchgate.net', color: 'green', priority: 690 },
-    { name: 'IEEE Xplore', host: 'ieeexplore.ieee.org', color: 'blue', priority: 680 },
-    { name: 'ACM Digital Library', host: 'dl.acm.org', color: 'blue', priority: 680 },
-    { name: 'Springer Link', host: 'link.springer.com', color: 'purple', priority: 680 },
-    { name: 'ScienceDirect', host: 'sciencedirect.com', color: 'orange', priority: 680 },
-    { name: 'Coursera', host: 'coursera.org', color: 'blue', priority: 670 },
-    { name: 'Udemy', host: 'udemy.com', color: 'purple', priority: 670 },
-    { name: 'edX', host: 'edx.org', color: 'blue', priority: 670 },
-    { name: 'Khan Academy', host: 'khanacademy.org', color: 'green', priority: 660 },
-    { name: 'Brilliant', host: 'brilliant.org', color: 'yellow', priority: 660 },
-    { name: 'Pluralsight', host: 'pluralsight.com', color: 'red', priority: 660 },
-    { name: 'Codecademy', host: 'codecademy.com', color: 'green', priority: 650 },
-    { name: 'FreeCodeCamp', host: 'freecodecamp.org', color: 'green', priority: 650 },
-    { name: 'LeetCode', host: 'leetcode.com', color: 'orange', priority: 650 },
-    { name: 'HackerRank', host: 'hackerrank.com', color: 'green', priority: 640 },
-    { name: 'Brilliant Courses', host: 'brilliant.org', path: /\/courses\//i, color: 'yellow', priority: 640 }
-  ]);
-
-  // News and media outlets.
-  pushSimpleRules(rules, [
-    { name: 'BBC News', host: 'bbc.co.uk', color: 'purple', priority: 620 },
-    { name: 'The Guardian', host: 'theguardian.com', color: 'purple', priority: 620 },
-    { name: 'New York Times', host: 'nytimes.com', color: 'purple', priority: 620 },
-    { name: 'Washington Post', host: 'washingtonpost.com', color: 'purple', priority: 620 },
-    { name: 'Wall Street Journal', host: 'wsj.com', color: 'purple', priority: 620 },
-    { name: 'Financial Times', host: 'ft.com', color: 'purple', priority: 620 },
-    { name: 'Bloomberg', host: 'bloomberg.com', color: 'purple', priority: 620 },
-    { name: 'Reuters', host: 'reuters.com', color: 'purple', priority: 620 },
-    { name: 'CNBC', host: 'cnbc.com', color: 'purple', priority: 610 },
-    { name: 'CNN', host: 'cnn.com', color: 'purple', priority: 610 },
-    { name: 'Fox News', host: 'foxnews.com', color: 'purple', priority: 610 },
-    { name: 'The Verge', host: 'theverge.com', color: 'purple', priority: 610 },
-    { name: 'TechCrunch', host: 'techcrunch.com', color: 'purple', priority: 610 },
-    { name: 'Ars Technica', host: 'arstechnica.com', color: 'purple', priority: 610 },
-    { name: 'Wired', host: 'wired.com', color: 'purple', priority: 610 },
-    { name: 'Engadget', host: 'engadget.com', color: 'purple', priority: 610 },
-    { name: 'VentureBeat', host: 'venturebeat.com', color: 'purple', priority: 600 },
-    { name: 'Slashdot', host: 'slashdot.org', color: 'purple', priority: 600 },
-    { name: 'ZDNet', host: 'zdnet.com', color: 'purple', priority: 600 },
-    { name: 'InfoWorld', host: 'infoworld.com', color: 'purple', priority: 600 },
-    { name: 'Hacker News', host: 'news.ycombinator.com', color: 'orange', priority: 600 },
-    { name: 'Product Hunt', host: 'producthunt.com', color: 'orange', priority: 590 },
-    { name: 'Lobsters', host: 'lobste.rs', color: 'orange', priority: 590 },
-    { name: 'Dev.to', host: 'dev.to', color: 'green', priority: 590 },
-    { name: 'Medium', host: 'medium.com', color: 'green', priority: 590 },
-    { name: 'Substack', host: 'substack.com', color: 'orange', priority: 590 },
-    { name: 'Smashing Magazine', host: 'smashingmagazine.com', color: 'purple', priority: 590 },
-    { name: 'StackShare', host: 'stackshare.io', color: 'blue', priority: 590 },
-    { name: 'The Information', host: 'theinformation.com', color: 'purple', priority: 590 }
-  ]);
-
-  // Social platforms.
-  rules.push(
-    {
-      name: 'LinkedIn',
-      color: 'blue',
-      priority: 620,
-      match: { hostRegex: hostPattern('linkedin.com') },
-      deriveName: (tabInfo) => ({ name: `LinkedIn – ${deriveLinkedInSuffix(tabInfo)}`, color: 'blue' })
-    },
-    {
-      name: 'Twitter / X',
-      color: 'blue',
-      priority: 620,
-      match: { hostRegex: /(twitter.com|x.com)$/i },
-      deriveName: () => ({ name: 'Twitter / X', color: 'blue' })
-    },
-    {
-      name: 'Facebook',
-      color: 'blue',
-      priority: 610,
-      match: { hostRegex: hostPattern('facebook.com') },
-      deriveName: () => ({ name: 'Facebook', color: 'blue' })
-    },
-    {
-      name: 'Instagram',
-      color: 'pink',
-      priority: 610,
-      match: { hostRegex: hostPattern('instagram.com') },
-      deriveName: () => ({ name: 'Instagram', color: 'pink' })
-    },
-    {
-      name: 'TikTok',
-      color: 'pink',
-      priority: 610,
-      match: { hostRegex: hostPattern('tiktok.com') },
-      deriveName: () => ({ name: 'TikTok', color: 'pink' })
-    },
-    {
-      name: 'Reddit – Subreddit',
-      color: 'orange',
-      priority: 610,
-      match: { hostRegex: hostPattern('reddit.com'), pathRegex: /\/r\/[^/]+/i },
-      deriveName: (tabInfo) => {
-        const subreddit = extractSubreddit(tabInfo);
-        return subreddit ? { name: `Reddit – r/${subreddit}`, color: 'orange' } : { name: 'Reddit', color: 'orange' };
-      }
-    }
-  );
-
-  pushSimpleRules(rules, [
-    { name: 'Mastodon', host: 'mastodon.', color: 'purple', priority: 600 },
-    { name: 'Bluesky', host: 'bsky.app', color: 'blue', priority: 600 },
-    { name: 'Threads', host: 'threads.net', color: 'pink', priority: 600 },
-    { name: 'Pinterest', host: 'pinterest.com', color: 'red', priority: 590 },
-    { name: 'Snapchat Web', host: 'web.snapchat.com', color: 'yellow', priority: 590 },
-    { name: 'Quora', host: 'quora.com', color: 'red', priority: 590 }
-  ]);
-
-  // Maps and travel.
-  rules.push(
-    {
-      name: 'Google Maps – Directions',
-      color: 'green',
-      priority: 600,
-      match: { hostRegex: hostPattern('google.com'), pathRegex: /\/maps\/dir/i },
-      deriveName: () => ({ name: 'Google Maps – Directions', color: 'green' })
-    },
-    {
-      name: 'Google Maps – Places',
-      color: 'green',
-      priority: 600,
-      match: { hostRegex: hostPattern('google.com'), pathRegex: /\/maps\/place/i },
-      deriveName: () => ({ name: 'Google Maps – Places', color: 'green' })
-    }
-  );
-
-  pushSimpleRules(rules, [
-    { name: 'Google Travel', host: 'google.com', path: /\/travel/i, color: 'green', priority: 600 },
-    { name: 'Booking.com', host: 'booking.com', color: 'blue', priority: 590 },
-    { name: 'Airbnb Stays', host: 'airbnb.com', path: /\/rooms\//i, color: 'pink', priority: 590 },
-    { name: 'Expedia', host: 'expedia.com', color: 'blue', priority: 590 },
-    { name: 'Skyscanner', host: 'skyscanner.net', color: 'blue', priority: 590 },
-    { name: 'Kayak', host: 'kayak.com', color: 'orange', priority: 580 },
-    { name: 'Delta Airlines', host: 'delta.com', color: 'blue', priority: 580 },
-    { name: 'United Airlines', host: 'united.com', color: 'blue', priority: 580 },
-    { name: 'American Airlines', host: 'aa.com', color: 'blue', priority: 580 },
-    { name: 'Southwest Airlines', host: 'southwest.com', color: 'blue', priority: 580 },
-    { name: 'Lufthansa', host: 'lufthansa.com', color: 'blue', priority: 580 },
-    { name: 'British Airways', host: 'britishairways.com', color: 'blue', priority: 580 },
-    { name: 'Air France', host: 'airfrance.com', color: 'blue', priority: 580 },
-    { name: 'easyJet', host: 'easyjet.com', color: 'orange', priority: 580 },
-    { name: 'Ryanair', host: 'ryanair.com', color: 'blue', priority: 580 },
-    { name: 'SeatGuru', host: 'seatguru.com', color: 'orange', priority: 570 },
-    { name: 'Trainline', host: 'thetrainline.com', color: 'green', priority: 570 },
-    { name: 'Uber Trips', host: 'riders.uber.com', color: 'grey', priority: 570 },
-    { name: 'Lyft Rides', host: 'ride.lyft.com', color: 'pink', priority: 570 }
-  ]);
-
-  // Shopping.
-  rules.push(
-    {
-      name: 'Amazon – Product',
-      color: 'orange',
-      priority: 580,
-      match: { hostRegex: /amazon\./i, pathRegex: /\/dp\//i },
-      deriveName: () => ({ name: 'Amazon – Product', color: 'orange' })
-    },
-    {
-      name: 'Amazon – Search',
-      color: 'orange',
-      priority: 580,
-      match: { hostRegex: /amazon\./i, pathRegex: /^\/s/i },
-      deriveName: () => ({ name: 'Amazon – Search', color: 'orange' })
-    },
-    {
-      name: 'Amazon – Cart',
-      color: 'orange',
-      priority: 580,
-      match: { hostRegex: /amazon\./i, pathRegex: /\/gp\/cart/i },
-      deriveName: () => ({ name: 'Amazon – Cart', color: 'orange' })
-    }
-  );
-
-  pushSimpleRules(rules, [
-    { name: 'eBay – Listings', host: 'ebay.com', path: /\/itm\//i, color: 'yellow', priority: 570 },
-    { name: 'AliExpress', host: 'aliexpress.com', color: 'red', priority: 570 },
-    { name: 'Etsy', host: 'etsy.com', color: 'orange', priority: 570 },
-    { name: 'Walmart', host: 'walmart.com', color: 'blue', priority: 560 },
-    { name: 'Target', host: 'target.com', color: 'red', priority: 560 },
-    { name: 'Best Buy', host: 'bestbuy.com', color: 'blue', priority: 560 },
-    { name: 'Costco', host: 'costco.com', color: 'blue', priority: 560 },
-    { name: 'Newegg', host: 'newegg.com', color: 'yellow', priority: 560 },
-    { name: 'Home Depot', host: 'homedepot.com', color: 'orange', priority: 560 },
-    { name: "Lowe's", host: 'lowes.com', color: 'blue', priority: 560 },
-    { name: 'Shopify Admin', host: 'myshopify.com', color: 'green', priority: 550 },
-    { name: 'Stripe Checkout', host: 'checkout.stripe.com', color: 'purple', priority: 550 }
-  ]);
-
-  // Finance and banking.
-  pushSimpleRules(rules, [
-    { name: 'PayPal', host: 'paypal.com', color: 'blue', priority: 560 },
-    { name: 'Stripe Dashboard', host: 'dashboard.stripe.com', color: 'purple', priority: 560 },
-    { name: 'Wise', host: 'wise.com', color: 'green', priority: 560 },
-    { name: 'Revolut', host: 'revolut.com', color: 'blue', priority: 560 },
-    { name: 'Coinbase', host: 'coinbase.com', color: 'blue', priority: 550 },
-    { name: 'Binance', host: 'binance.com', color: 'yellow', priority: 550 },
-    { name: 'Kraken', host: 'kraken.com', color: 'blue', priority: 550 },
-    { name: 'Robinhood', host: 'robinhood.com', color: 'green', priority: 550 },
-    { name: 'E*TRADE', host: 'etrade.com', color: 'purple', priority: 550 },
-    { name: 'Vanguard', host: 'investor.vanguard.com', color: 'red', priority: 540 },
-    { name: 'Fidelity', host: 'fidelity.com', color: 'green', priority: 540 },
-    { name: 'Charles Schwab', host: 'schwab.com', color: 'blue', priority: 540 },
-    { name: 'Chase Bank', host: 'chase.com', color: 'blue', priority: 540 },
-    { name: 'Bank of America', host: 'bankofamerica.com', color: 'red', priority: 540 },
-    { name: 'Wells Fargo', host: 'wellsfargo.com', color: 'red', priority: 540 },
-    { name: 'Capital One', host: 'capitalone.com', color: 'blue', priority: 540 },
-    { name: 'Mint', host: 'mint.intuit.com', color: 'green', priority: 530 },
-    { name: 'QuickBooks', host: 'quickbooks.intuit.com', color: 'green', priority: 530 },
-    { name: 'Xero', host: 'go.xero.com', color: 'blue', priority: 530 },
-    { name: 'Plaid Dashboard', host: 'dashboard.plaid.com', color: 'blue', priority: 530 },
-    { name: 'Yahoo Finance', host: 'finance.yahoo.com', color: 'purple', priority: 530 },
-    { name: 'TradingView', host: 'tradingview.com', color: 'purple', priority: 530 }
-  ]);
-
-  // Music and entertainment.
-  pushSimpleRules(rules, [
-    { name: 'Spotify', host: 'open.spotify.com', color: 'green', priority: 520 },
-    { name: 'Apple Music', host: 'music.apple.com', color: 'red', priority: 520 },
-    { name: 'SoundCloud', host: 'soundcloud.com', color: 'orange', priority: 520 },
-    { name: 'YouTube Music', host: 'music.youtube.com', color: 'red', priority: 520 },
-    { name: 'Netflix', host: 'netflix.com', color: 'red', priority: 520 },
-    { name: 'Prime Video', host: 'primevideo.com', color: 'blue', priority: 520 },
-    { name: 'Disney+', host: 'disneyplus.com', color: 'blue', priority: 520 },
-    { name: 'Hulu', host: 'hulu.com', color: 'green', priority: 520 },
-    { name: 'Max', host: 'max.com', color: 'purple', priority: 520 },
-    { name: 'Peacock', host: 'peacocktv.com', color: 'yellow', priority: 520 },
-    { name: 'Paramount+', host: 'paramountplus.com', color: 'blue', priority: 520 },
-    { name: 'Crunchyroll', host: 'crunchyroll.com', color: 'orange', priority: 520 },
-    { name: 'Plex', host: 'plex.tv', color: 'orange', priority: 510 },
-    { name: 'Letterboxd', host: 'letterboxd.com', color: 'green', priority: 510 },
-    { name: 'IMDb', host: 'imdb.com', color: 'yellow', priority: 510 }
-  ]);
-
-  const EXTRA_DOCS = [
-    'developer.android.com',
-    'firebase.google.com/docs',
-    'supabase.com/docs',
-    'docs.expo.dev',
-    'ionicframework.com/docs',
-    'tailwindcss.com/docs',
-    'storybook.js.org/docs',
-    'jestjs.io/docs',
-    'babeljs.io/docs',
-    'webpack.js.org/concepts',
-    'eslint.org/docs',
-    'docs.cypress.io',
-    'playwright.dev/docs',
-    'vitejs.dev/guide',
-    'astro.build/docs',
-    'redwoodjs.com/docs',
-    'remix.run/docs',
-    'swr.vercel.app/docs',
-    'tanstack.com/query/latest/docs',
-    'graphql.org/learn',
-    'apollographql.com/docs',
-    'docs.nestjs.com',
-    'fastapi.tiangolo.com',
-    'flask-restful.readthedocs.io',
-    'pytest.org/en/latest',
-    'docs.sqlalchemy.org',
-    'typeorm.io/#/docs',
-    'sequelize.org/docs',
-    'symfony.com/doc',
-    'laravel.com/docs',
-    'adonisjs.com/docs',
-    'hasura.io/docs',
-    'docs.aws.amazon.com/cdk',
-    'docs.aws.amazon.com/cloudformation',
-    'registry.terraform.io/providers/hashicorp/aws/latest/docs',
-    'docs.pulumi.com',
-    'developer.okta.com/docs',
-    'auth0.com/docs',
-    'stripe.com/docs',
-    'docs.github.com/en/actions',
-    'docs.gitlab.com/ee/ci',
-    'developer.paypal.com/docs',
-    'developer.adobe.com',
-    'docs.mapbox.com',
-    'leafletjs.com/reference',
-    'threejs.org/docs',
-    'd3js.org',
-    'echarts.apache.org/en/option',
-    'plotly.com/javascript',
-    'docs.databricks.com',
-    'docs.docker.com',
-    'learn.hashicorp.com/terraform',
-    'docs.microsoft.com/azure/devops',
-    'docs.microsoft.com/powershell',
-    'docs.python.org/3/library',
-    'docs.rust-embedded.org',
-    'developer.apple.com/documentation',
-    'docs.oracle.com/javase',
-    'docs.aws.amazon.com/cli',
-    'docs.microsoft.com/dotnet',
-    'dev.mysql.com/doc',
-    'redis.io/docs/stack',
-    'docs.mongodb.com/manual'
-  ];
-  pushSimpleRules(
-    rules,
-    EXTRA_DOCS.map((entry) => {
-      const [host, ...pathParts] = entry.split('/');
-      const path = pathParts.length
-        ? new RegExp('/' + pathParts.join('/').split('#')[0].split('?')[0].split('/').map((segment) => escapeRegex(segment)).join('/'), 'i')
-        : undefined;
-      return {
-        name: `Docs – ${host.replace(/^www\\./, '')}`,
-        host,
-        path: path,
-        color: 'blue',
-        priority: 500
-      };
-    }),
-    { priority: 500, color: 'blue' }
-  );
-
-  if (DEBUG) {
-    console.log('[tab_utils] Rules catalog size:', rules.length);
   }
-
   return rules;
 }
 
-/**
- * Compile rule definitions into ready-to-match structures.
- * @param {Array} catalog
- * @returns {Array}
- */
+function buildKeywordMap() {
+  const map = new Map();
+  for (const [category, definition] of Object.entries(CATEGORY_KEYWORD_DEFINITIONS)) {
+    const keywords = new Map(Object.entries(definition.keywords || {}));
+    map.set(category, {
+      keywords,
+      keywordSet: new Set(keywords.keys()),
+      hostHints: definition.hostHints || [],
+      pathHints: definition.pathHints || [],
+      titleHints: (definition.titleHints || []).map((pattern) => new RegExp(pattern, 'i')),
+      hostWeight: definition.hostWeight ?? 3,
+      pathWeight: definition.pathWeight ?? 1.5,
+      titleWeight: definition.titleWeight ?? 2,
+      threshold: definition.threshold ?? 3,
+      priority: definition.priority ?? CATEGORY_PRIORITY.get(category) || 0
+    });
+  }
+  return map;
+}
+
 function compileRuleCatalog(catalog) {
   return catalog
     .map((rule, index) => compileSingleRule(rule, index))
@@ -1915,36 +1561,31 @@ function compileRuleCatalog(catalog) {
     .sort((a, b) => b.priority - a.priority || a.index - b.index);
 }
 
-/**
- * Compile a single rule definition.
- * @param {any} rule
- * @param {number} index
- */
 function compileSingleRule(rule, index) {
   if (!rule || typeof rule !== 'object') return null;
-  const name = typeof rule.name === 'string' ? rule.name : '';
   const priority = Number.isFinite(rule.priority) ? Number(rule.priority) : 0;
   const color = sanitizeGroupColor(rule.color) || undefined;
-  const host = rule.match && rule.match.hostRegex ? rule.match.hostRegex : resolveHostRegex(rule.match && rule.match.host);
-  const path = rule.match && rule.match.pathRegex ? rule.match.pathRegex : resolveRegex(rule.match && rule.match.path);
-  const title = rule.match && rule.match.titleRegex ? rule.match.titleRegex : resolveRegex(rule.match && rule.match.title);
+  const category = typeof rule.category === 'string' ? rule.category : undefined;
+  const label = typeof rule.label === 'string' ? rule.label : rule.name;
+  const match = rule.match || {};
+  const host = match.hostRegex || resolveHostRegex(match.host);
+  const path = match.pathRegex || resolveRegex(match.path);
+  const title = match.titleRegex || resolveRegex(match.title);
   if (!host && !path && !title) return null;
   return {
     index,
-    name,
+    name: typeof rule.name === 'string' ? rule.name : category || 'Group',
     color,
     priority,
     host,
     path,
     title,
+    category,
+    label,
     deriveName: typeof rule.deriveName === 'function' ? rule.deriveName : null
   };
 }
 
-/**
- * Compile user supplied rules into the standard format.
- * @param {Array} userRules
- */
 function compileUserRules(userRules) {
   const compiled = [];
   let counter = 0;
@@ -1962,143 +1603,415 @@ function compileUserRules(userRules) {
       host,
       path,
       title,
+      category: name,
+      label: name,
       deriveName: () => ({ name, key: `user:${name.toLowerCase()}` })
     });
   }
   return compiled;
 }
 
-const TOKEN_DICTIONARY = [
-  {
-    id: 'github_prs',
-    label: 'GitHub – PRs',
-    color: 'green',
-    keywords: ['github', 'pull', 'pr', 'merge'],
-    hostHints: ['github.com'],
-    threshold: 3
-  },
-  {
-    id: 'github_issues',
-    label: 'GitHub – Issues',
-    color: 'orange',
-    keywords: ['github', 'issue', 'bug', 'ticket'],
-    hostHints: ['github.com'],
-    threshold: 3
-  },
-  {
-    id: 'docs_google',
-    label: 'Docs – Google',
-    color: 'blue',
-    keywords: ['google', 'doc', 'sheet', 'slide', 'drive'],
-    hostHints: ['docs.google.com', 'drive.google.com'],
-    threshold: 3
-  },
-  {
-    id: 'docs_general',
-    label: 'Docs – Reference',
-    color: 'blue',
-    keywords: ['docs', 'documentation', 'reference', 'guide', 'manual'],
-    threshold: 4
-  },
-  {
-    id: 'ci_cd',
-    label: 'CI/CD',
-    color: 'cyan',
-    keywords: ['pipeline', 'build', 'deploy', 'ci', 'workflow', 'job'],
-    threshold: 3
-  },
-  {
-    id: 'observability',
-    label: 'Observability',
-    color: 'purple',
-    keywords: ['metric', 'dashboard', 'alert', 'monitor', 'trace', 'log'],
-    threshold: 3
-  },
-  {
-    id: 'communication',
-    label: 'Communication',
-    color: 'green',
-    keywords: ['inbox', 'mail', 'calendar', 'meeting', 'chat', 'message'],
-    threshold: 4
-  },
-  {
-    id: 'project_management',
-    label: 'Project Management',
-    color: 'cyan',
-    keywords: ['task', 'project', 'board', 'kanban', 'sprint'],
-    threshold: 3
-  },
-  {
-    id: 'research',
-    label: 'Research & Papers',
-    color: 'purple',
-    keywords: ['paper', 'scholar', 'arxiv', 'citation', 'abstract'],
-    threshold: 3
-  },
-  {
-    id: 'news',
-    label: 'News – Tech',
-    color: 'purple',
-    keywords: ['news', 'article', 'tech', 'startup', 'review'],
-    threshold: 3
-  },
-  {
-    id: 'shopping',
-    label: 'Shopping',
-    color: 'orange',
-    keywords: ['cart', 'product', 'buy', 'price', 'deal'],
-    threshold: 3
-  },
-  {
-    id: 'travel',
-    label: 'Travel',
-    color: 'blue',
-    keywords: ['flight', 'hotel', 'booking', 'ticket', 'itinerary'],
-    threshold: 3
-  },
-  {
-    id: 'finance',
-    label: 'Finance',
-    color: 'green',
-    keywords: ['bank', 'account', 'invoice', 'payment', 'portfolio', 'trade'],
-    threshold: 3
-  },
-  {
-    id: 'media',
-    label: 'Media & Streaming',
-    color: 'red',
-    keywords: ['video', 'stream', 'music', 'playlist', 'episode'],
-    threshold: 3
-  },
-  {
-    id: 'social',
-    label: 'Social & Community',
-    color: 'pink',
-    keywords: ['social', 'profile', 'comment', 'follow', 'thread'],
-    threshold: 3
-  }
-];
+export function categorizeTabs(tabs, options = {}) {
+  const infos = ensureTabInfos(tabs);
+  const { groups, assignments } = categorizeTabInfos(infos, options);
+  const map = new Map();
+  const colors = new Map();
+  const diagnostics = new Map();
 
-function classifyWithTokens(tabInfo) {
-  const frequency = tabInfo.tokenFrequency;
-  if (!frequency || frequency.size === 0) return null;
-  let best = null;
-  for (const category of TOKEN_DICTIONARY) {
+  for (const group of groups) {
+    if (!group.tabIds.length) continue;
+    const sorted = sortTabIdsByIndex(group.tabIds, assignments);
+    map.set(group.name, sorted);
+    const color = CATEGORY_COLOR_MAP.get(group.name) || group.color;
+    if (color) colors.set(group.name, color);
+  }
+
+  for (const [tabId, assignment] of assignments.entries()) {
+    diagnostics.set(tabId, buildCategoryDiagnostic(assignment));
+  }
+
+  map.colors = colors;
+  map.diagnostics = diagnostics;
+  return map;
+}
+function categorizeTabInfos(tabInfos, options = {}) {
+  const assignments = new Map();
+  const unmatched = [];
+
+  for (const info of tabInfos) {
+    const ruleMatch = matchCategoryRule(info);
+    if (ruleMatch) {
+      const category = normalizeCategoryName(ruleMatch.category || ruleMatch.name);
+      assignments.set(
+        info.id,
+        createCategoryAssignment(info, category, 'rule', {
+          rule: ruleMatch.ruleName,
+          color: ruleMatch.color || CATEGORY_COLOR_MAP.get(category)
+        })
+      );
+    } else {
+      unmatched.push(info);
+    }
+  }
+
+  for (const info of unmatched) {
+    const scored = scoreCategory(info);
+    const category = normalizeCategoryName(scored.category);
+    assignments.set(
+      info.id,
+      createCategoryAssignment(info, category, 'keyword', {
+        score: scored.score,
+        keywords: scored.keywords
+      })
+    );
+  }
+
+  limitCategoryAssignments(assignments, options.maxGroups || 5);
+  const { groups } = collectCategoryGroupRecords(assignments);
+  return { groups, assignments };
+}
+
+function ensureTabInfos(tabs) {
+  const infos = [];
+  for (const entry of tabs || []) {
+    if (entry && typeof entry === 'object' && entry.host && entry.tokenFrequency) {
+      infos.push(entry);
+    } else if (entry && typeof entry === 'object') {
+      infos.push(prepareTabForClassification(entry));
+    }
+  }
+  return infos;
+}
+
+function normalizeCategoryName(name) {
+  if (!name || typeof name !== 'string') return 'Other';
+  const trimmed = name.trim();
+  return CATEGORY_ORDER.includes(trimmed) ? trimmed : 'Other';
+}
+
+function createCategoryAssignment(info, category, method, details = {}) {
+  return {
+    id: info.id,
+    info,
+    category,
+    initialCategory: category,
+    method,
+    rule: details.rule || null,
+    color: details.color || CATEGORY_COLOR_MAP.get(category),
+    score: details.score,
+    keywords: details.keywords || [],
+    mergeHistory: []
+  };
+}
+
+function matchCategoryRule(tabInfo) {
+  return matchCompiledRule(COMPILED_RULES, tabInfo);
+}
+
+function scoreCategory(tabInfo) {
+  const frequency = tabInfo.tokenFrequency || new Map();
+  let best = { category: 'Other', score: 0, keywords: [] };
+  for (const [category, config] of KEYWORD_MAP.entries()) {
+    if (category === 'Other') continue;
     let score = 0;
-    for (const keyword of category.keywords) {
-      score += frequency.get(keyword) || 0;
+    const matches = [];
+    for (const [keyword, weight] of config.keywords.entries()) {
+      const freq = frequency.get(keyword);
+      if (freq) {
+        const contribution = freq * weight;
+        score += contribution;
+        matches.push({ keyword, weight: contribution });
+      }
     }
-    if (category.hostHints && category.hostHints.some((hint) => tabInfo.host.includes(hint))) {
-      score += 2;
+    if (config.hostHints) {
+      for (const hint of config.hostHints) {
+        if (tabInfo.host.includes(hint)) {
+          score += config.hostWeight;
+        }
+      }
     }
-    if (score >= (category.threshold || 3)) {
-      if (!best || score > best.score) {
-        best = { category, score };
+    if (config.pathHints) {
+      for (const hint of config.pathHints) {
+        if (tabInfo.path.includes(hint)) {
+          score += config.pathWeight;
+        }
+      }
+    }
+    if (config.titleHints) {
+      for (const regex of config.titleHints) {
+        if (regex.test(tabInfo.title)) {
+          score += config.titleWeight;
+        }
+      }
+    }
+    if (score >= config.threshold) {
+      matches.sort((a, b) => b.weight - a.weight);
+      const adjusted = score + (config.priority || 0) * 0.01;
+      if (
+        adjusted > best.score ||
+        (Math.abs(adjusted - best.score) < 0.0001 && (config.priority || 0) > (KEYWORD_MAP.get(best.category)?.priority || 0))
+      ) {
+        best = {
+          category,
+          score: adjusted,
+          keywords: matches.slice(0, 5)
+        };
       }
     }
   }
-  if (!best) return null;
-  return { name: best.category.label, color: best.category.color };
+  return best;
+}
+
+function limitCategoryAssignments(assignments, maxGroups) {
+  const safeMax = Math.max(1, Math.min(5, Math.floor(maxGroups)));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const stats = computeCategoryStats(assignments);
+    const entries = Array.from(stats.values()).filter((entry) => entry.count > 0);
+    if (!entries.length) break;
+    const otherEntry = stats.get('Other');
+    const nonOther = entries.filter((entry) => entry.name !== 'Other');
+    let totalGroups = entries.length;
+
+    if (totalGroups > safeMax) {
+      const reserveForOther = nonOther.length > safeMax || (otherEntry && otherEntry.count > 0) ? 1 : 0;
+      let allowedNonOther = safeMax - reserveForOther;
+      if (allowedNonOther < 0) allowedNonOther = 0;
+      nonOther.sort((a, b) => b.count - a.count || CATEGORY_PRIORITY.get(b.name) - CATEGORY_PRIORITY.get(a.name));
+      for (const entry of nonOther.slice(allowedNonOther)) {
+        mergeAssignmentsForTabs(assignments, entry.tabIds, entry.name, 'Other', 'overflow');
+        changed = true;
+      }
+      totalGroups = computeCategoryStats(assignments).size;
+    }
+
+    if (!changed && totalGroups >= 4) {
+      const refreshed = computeCategoryStats(assignments);
+      for (const entry of refreshed.values()) {
+        if (entry.name === 'Other') continue;
+        if (entry.count < 2) {
+          const target = findNearestCategory(entry.name, refreshed) || 'Other';
+          mergeAssignmentsForTabs(assignments, entry.tabIds, entry.name, target, 'small');
+          changed = true;
+          break;
+        }
+      }
+    }
+
+    if (!changed) {
+      const refreshed = computeCategoryStats(assignments);
+      if (refreshed.size > safeMax) {
+        const candidate = findSmallestCategory(refreshed);
+        if (candidate) {
+          const target = findNearestCategory(candidate.name, refreshed) || 'Other';
+          mergeAssignmentsForTabs(assignments, candidate.tabIds, candidate.name, target, 'limit');
+          changed = true;
+        }
+      }
+    }
+  }
+}
+function computeCategoryStats(assignments) {
+  const stats = new Map();
+  for (const assignment of assignments.values()) {
+    const name = assignment.category;
+    if (!stats.has(name)) {
+      stats.set(name, { name, count: 0, tabIds: [], assignments: [] });
+    }
+    const entry = stats.get(name);
+    entry.count += 1;
+    entry.tabIds.push(assignment.id);
+    entry.assignments.push(assignment);
+  }
+  return stats;
+}
+
+function mergeAssignmentsForTabs(assignments, tabIds, fromName, toName, reason) {
+  if (!tabIds || fromName === toName) return;
+  for (const tabId of tabIds) {
+    const assignment = assignments.get(tabId);
+    if (!assignment || assignment.category === toName) continue;
+    assignment.mergeHistory.push({ from: assignment.category, to: toName, reason });
+    assignment.category = toName;
+  }
+}
+
+function findSmallestCategory(stats) {
+  let candidate = null;
+  for (const entry of stats.values()) {
+    if (entry.count === 0) continue;
+    if (entry.name === 'Other') continue;
+    if (!candidate || entry.count < candidate.count) {
+      candidate = entry;
+    }
+  }
+  if (!candidate) {
+    candidate = stats.get('Other') || null;
+  }
+  return candidate;
+}
+
+function findNearestCategory(name, stats) {
+  let best = null;
+  let bestScore = -Infinity;
+  for (const entry of stats.values()) {
+    if (entry.name === name || entry.count === 0) continue;
+    const score = computeCategorySimilarity(name, entry.name);
+    if (score > bestScore || (score === bestScore && entry.count > (best?.count || 0))) {
+      best = entry;
+      bestScore = score;
+    }
+  }
+  return best ? best.name : null;
+}
+
+function computeCategorySimilarity(a, b) {
+  if (a === b) return Number.POSITIVE_INFINITY;
+  const configA = KEYWORD_MAP.get(a);
+  const configB = KEYWORD_MAP.get(b);
+  if (!configA || !configB) return 0;
+  let score = 0;
+  for (const keyword of configA.keywordSet) {
+    if (configB.keywordSet.has(keyword)) {
+      score += Math.min(configA.keywords.get(keyword) || 1, configB.keywords.get(keyword) || 1);
+    }
+  }
+  if (CATEGORY_NEIGHBORS.get(a)?.includes(b)) score += 0.5;
+  if (CATEGORY_NEIGHBORS.get(b)?.includes(a)) score += 0.5;
+  return score;
+}
+
+function collectCategoryGroupRecords(assignments) {
+  const stats = computeCategoryStats(assignments);
+  const groups = [];
+  for (const entry of stats.values()) {
+    const sorted = entry.assignments
+      .slice()
+      .sort((a, b) => a.info.tab.index - b.info.tab.index)
+      .map((assignment) => assignment.id);
+    groups.push({
+      name: entry.name,
+      tabIds: sorted,
+      color: CATEGORY_COLOR_MAP.get(entry.name) || null,
+      origin: 'category'
+    });
+  }
+  groups.sort((a, b) => b.tabIds.length - a.tabIds.length || CATEGORY_PRIORITY.get(b.name) - CATEGORY_PRIORITY.get(a.name));
+  return { groups, stats };
+}
+
+function sortTabIdsByIndex(tabIds, assignments) {
+  return tabIds
+    .slice()
+    .sort((a, b) => {
+      const infoA = assignments.get(a)?.info;
+      const infoB = assignments.get(b)?.info;
+      const indexA = infoA ? infoA.tab.index : 0;
+      const indexB = infoB ? infoB.tab.index : 0;
+      return indexA - indexB;
+    });
+}
+
+function buildCategoryDiagnostic(assignment) {
+  const diag = {
+    group: assignment.category,
+    reason: assignment.method === 'rule' ? 'category-rule' : 'category-keywords'
+  };
+  if (assignment.rule) {
+    diag.rule = assignment.rule;
+  }
+  if (assignment.method === 'keyword') {
+    diag.score = Number(assignment.score?.toFixed(2) || 0);
+    if (assignment.keywords && assignment.keywords.length) {
+      diag.keywords = assignment.keywords.map((item) => item.keyword);
+    }
+  }
+  if (assignment.mergeHistory.length) {
+    diag.merge = assignment.mergeHistory.map((step) => ({ from: step.from, to: step.to, reason: step.reason }));
+  }
+  return diag;
+}
+function capTotalGroups(records, assignments, maxGroups) {
+  const safeMax = Math.max(1, Math.min(5, Math.floor(maxGroups)));
+  const working = records
+    .map((record) => ({ ...record, tabIds: Array.from(new Set(record.tabIds)) }))
+    .filter((record) => record.tabIds.length > 0);
+  if (!working.length) return working;
+  let other = working.find((record) => record.name === 'Other');
+  while (working.length > safeMax) {
+    const index = findSmallestRecordIndex(working);
+    if (index < 0) break;
+    const candidate = working[index];
+    let target = selectTargetRecord(candidate, working);
+    if (!target) {
+      if (!other) {
+        other = { name: 'Other', tabIds: [], color: CATEGORY_COLOR_MAP.get('Other'), origin: 'category' };
+        working.push(other);
+      }
+      target = other;
+    }
+    if (target.name === candidate.name) break;
+    mergeGroupRecords(candidate, target, assignments, 'limit');
+    working.splice(index, 1);
+  }
+  return working.filter((record) => record.tabIds.length > 0);
+}
+
+function findSmallestRecordIndex(records) {
+  let candidateIndex = -1;
+  let bestKey = null;
+  for (let i = 0; i < records.length; i += 1) {
+    const record = records[i];
+    if (record.name === 'Other' && records.length <= 1) continue;
+    const prefer = record.origin === 'category' ? 0 : 1;
+    const key = [prefer, record.tabIds.length, CATEGORY_PRIORITY.get(record.name) || 0];
+    if (!bestKey || key[0] < bestKey[0] || (key[0] === bestKey[0] && (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] > bestKey[2])))) {
+      bestKey = key;
+      candidateIndex = i;
+    }
+  }
+  return candidateIndex;
+}
+
+function selectTargetRecord(candidate, records) {
+  if (candidate.origin === 'category') {
+    let best = null;
+    let bestScore = -Infinity;
+    for (const record of records) {
+      if (record.name === candidate.name || record.tabIds.length === 0) continue;
+      let score = 0;
+      if (record.origin === 'category') {
+        score = computeCategorySimilarity(candidate.name, record.name);
+      }
+      if (score > bestScore || (score === bestScore && record.tabIds.length > (best?.tabIds.length || 0))) {
+        best = record;
+        bestScore = score;
+      }
+    }
+    if (best) return best;
+  }
+  return records.find((record) => record.name === 'Other');
+}
+
+function mergeGroupRecords(source, target, assignments, reason) {
+  const uniqueIds = Array.from(new Set(source.tabIds));
+  target.tabIds.push(...uniqueIds);
+  mergeAssignmentsForTabs(assignments, uniqueIds, source.name, target.name, reason);
+  source.tabIds = [];
+}
+
+function buildFinalDiagnostic(assignment) {
+  if (!assignment) return null;
+  if (assignment.method === 'user-rule') {
+    const diag = { group: assignment.category, reason: 'rule' };
+    if (assignment.rule) diag.rule = assignment.rule;
+    if (assignment.mergeHistory.length) {
+      diag.merge = assignment.mergeHistory.map((step) => ({ from: step.from, to: step.to, reason: step.reason }));
+    }
+    return diag;
+  }
+  return buildCategoryDiagnostic(assignment);
 }
 
 function matchCompiledRule(rules, tabInfo) {
@@ -2106,15 +2019,16 @@ function matchCompiledRule(rules, tabInfo) {
     if (rule.host && !rule.host.test(tabInfo.host)) continue;
     if (rule.title && !rule.title.test(tabInfo.title)) continue;
     if (rule.path && !rule.path.test(tabInfo.path)) continue;
-    const derived = rule.deriveName ? rule.deriveName(tabInfo) : null;
-    const baseName = derived && derived.name ? truncateLabel(derived.name) : truncateLabel(rule.name);
+    const derived = rule.deriveName ? rule.deriveName(tabInfo, rule) : null;
+    const category = normalizeCategoryName((derived && derived.category) || rule.category || rule.name);
+    const baseName = derived && derived.name ? truncateLabel(derived.name) : truncateLabel(category || rule.name);
     const color = derived && derived.color ? sanitizeGroupColor(derived.color) || rule.color : rule.color;
     const key = derived && derived.key ? derived.key : null;
-    return { name: baseName, color, key, ruleName: rule.name };
+    const label = derived && derived.label ? derived.label : rule.label || rule.name;
+    return { name: baseName, color, key, ruleName: label, category };
   }
   return null;
 }
-
 export function groupByRules(tabs, options = {}) {
   let opts = options;
   let userRulesInput = [];
@@ -2129,62 +2043,88 @@ export function groupByRules(tabs, options = {}) {
   const limitVal = Number(opts.maxTabsPerGroup);
   const maxTabsPerGroup = Number.isFinite(limitVal) && limitVal >= 2 ? Math.floor(limitVal) : 0;
 
-  const compiledRules = [...compileUserRules(userRulesInput), ...COMPILED_RULES];
+  const compiledUserRules = compileUserRules(userRulesInput);
   const snapshots = ensureSnapshots(tabs).slice().sort((a, b) => a.index - b.index);
-  const groups = new Map();
+  const userGroups = new Map();
   const colorMap = new Map();
   const counters = new Map();
-  const diagnostics = new Map();
+  const assignments = new Map();
+  const pinnedDiagnostics = new Map();
   const unmatchedInfos = [];
 
   for (const tab of snapshots) {
     if (preservePinned && tab.pinned) {
-      diagnostics.set(tab.id, { group: null, reason: 'pinned' });
+      pinnedDiagnostics.set(tab.id, { group: null, reason: 'pinned' });
       continue;
     }
     const info = prepareTabForClassification(tab);
-    const match = matchCompiledRule(compiledRules, info);
+    const match = matchCompiledRule(compiledUserRules, info);
     if (match) {
-      const groupName = assignTabToGroupMap(groups, colorMap, counters, match.name, match.color, tab.id, maxTabsPerGroup);
-      diagnostics.set(tab.id, { group: groupName, reason: 'rule', rule: match.ruleName });
+      const groupName = assignTabToGroupMap(userGroups, colorMap, counters, match.name, match.color, tab.id, maxTabsPerGroup);
+      assignments.set(tab.id, {
+        id: tab.id,
+        info,
+        category: groupName,
+        initialCategory: groupName,
+        method: 'user-rule',
+        rule: match.ruleName,
+        mergeHistory: []
+      });
       continue;
     }
     unmatchedInfos.push(info);
   }
 
-  const domainBuckets = new Map();
-
-  for (const info of unmatchedInfos) {
-    const tokenMatch = classifyWithTokens(info);
-    if (tokenMatch) {
-      const groupName = assignTabToGroupMap(groups, colorMap, counters, tokenMatch.name, tokenMatch.color, info.id, maxTabsPerGroup);
-      diagnostics.set(info.id, { group: groupName, reason: 'tokens', category: tokenMatch.name });
-      continue;
-    }
-    const domain = info.domain || info.host || 'unknown';
-    if (!domainBuckets.has(domain)) {
-      domainBuckets.set(domain, []);
-    }
-    domainBuckets.get(domain).push(info);
-  }
-
-  for (const [domain, infos] of domainBuckets.entries()) {
-    const label = `By Domain – ${domain}`;
-    for (const info of infos) {
-      const groupName = assignTabToGroupMap(groups, colorMap, counters, label, undefined, info.id, maxTabsPerGroup);
-      diagnostics.set(info.id, { group: groupName, reason: 'domain', domain });
+  let categoryAssignments = { groups: [], assignments: new Map() };
+  if (unmatchedInfos.length) {
+    const availableSlots = Math.max(1, 5 - userGroups.size);
+    categoryAssignments = categorizeTabInfos(unmatchedInfos, { maxGroups: availableSlots });
+    for (const [tabId, assignment] of categoryAssignments.assignments.entries()) {
+      assignments.set(tabId, assignment);
     }
   }
+
+  const records = [];
+  for (const [name, ids] of userGroups.entries()) {
+    if (!ids.length) continue;
+    const sorted = sortTabIdsByIndex(ids, assignments);
+    records.push({ name, tabIds: sorted, color: colorMap.get(name) || null, origin: 'user' });
+  }
+  records.push(...categoryAssignments.groups);
+
+  const cappedRecords = capTotalGroups(records, assignments, 5);
+
+  const finalColorMap = new Map();
+  const finalDiagnostics = new Map();
+  for (const [tabId, detail] of pinnedDiagnostics.entries()) {
+    finalDiagnostics.set(tabId, detail);
+  }
+
+  const normalizedRecords = cappedRecords
+    .map((record) => ({ ...record, tabIds: sortTabIdsByIndex(record.tabIds, assignments) }))
+    .filter((record) => record.tabIds.length > 0)
+    .sort((a, b) => b.tabIds.length - a.tabIds.length || CATEGORY_PRIORITY.get(b.name) - CATEGORY_PRIORITY.get(a.name));
+
+  const finalGroups = new Map();
+  for (const record of normalizedRecords) {
+    finalGroups.set(record.name, record.tabIds);
+    const color = record.origin === 'user' ? colorMap.get(record.name) || record.color : CATEGORY_COLOR_MAP.get(record.name) || record.color;
+    if (color) finalColorMap.set(record.name, color);
+  }
+
+  for (const [tabId, assignment] of assignments.entries()) {
+    finalDiagnostics.set(tabId, buildFinalDiagnostic(assignment));
+  }
+
+  finalGroups.colors = finalColorMap;
+  finalGroups.diagnostics = finalDiagnostics;
 
   lastClassification.clear();
-  for (const [id, detail] of diagnostics.entries()) {
+  for (const [id, detail] of finalDiagnostics.entries()) {
     lastClassification.set(id, detail);
   }
 
-  groups.colors = colorMap;
-  groups.diagnostics = diagnostics;
-
-  return groups;
+  return finalGroups;
 }
 
 export function explainClassification(tab) {
