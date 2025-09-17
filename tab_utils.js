@@ -164,6 +164,15 @@ function normalizePath(pathname) {
   return cleaned === '/' ? '/' : cleaned;
 }
 
+function firstDefined(...values) {
+  for (const value of values) {
+    if (value !== null && value !== undefined) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Remove accents from a string.
  * @param {string} value
@@ -589,9 +598,9 @@ function sanitizeGroupColor(value) {
  */
 export function snapshotTab(tab) {
   return {
-    id: tab.id ?? -1,
-    title: tab.title ?? 'Untitled',
-    url: tab.url ?? '',
+    id: typeof tab.id === 'number' ? tab.id : -1,
+    title: typeof tab.title === 'string' ? tab.title : 'Untitled',
+    url: typeof tab.url === 'string' ? tab.url : '',
     pinned: Boolean(tab.pinned),
     audible: Boolean(tab.audible),
     active: Boolean(tab.active),
@@ -616,7 +625,8 @@ export async function fetchCurrentWindowTabs() {
     throw new Error('Unable to read tabs for the current window.');
   }
   const snapshots = win.tabs.filter((tab) => typeof tab.id === 'number').map((tab) => snapshotTab(tab));
-  return { windowId: win.id ?? -1, tabs: snapshots };
+  const windowId = typeof win.id === 'number' ? win.id : -1;
+  return { windowId, tabs: snapshots };
 }
 
 /**
@@ -842,7 +852,7 @@ function pushSimpleRules(target, entries, defaults = {}) {
     target.push({
       name: entry.name,
       color: entry.color || defaults.color,
-      priority: entry.priority ?? defaults.priority ?? 400,
+      priority: firstDefined(entry.priority, defaults.priority, 400),
       match: {
         hostRegex: resolveHostRegex(entry.host || entry.hostRegex),
         pathRegex: resolveRegex(entry.path || entry.pathRegex),
@@ -1499,7 +1509,7 @@ function buildRulesCatalog() {
   const rules = [];
   for (const [category, definition] of Object.entries(CATEGORY_RULE_DEFINITIONS)) {
     const color = CATEGORY_COLOR_MAP.get(category);
-    const priority = definition.priority ?? 800;
+    const priority = firstDefined(definition.priority, 800);
     for (const [label, host] of definition.hosts || []) {
       rules.push({
         name: category,
@@ -1544,11 +1554,11 @@ function buildKeywordMap() {
       hostHints: definition.hostHints || [],
       pathHints: definition.pathHints || [],
       titleHints: (definition.titleHints || []).map((pattern) => new RegExp(pattern, 'i')),
-      hostWeight: definition.hostWeight ?? 3,
-      pathWeight: definition.pathWeight ?? 1.5,
-      titleWeight: definition.titleWeight ?? 2,
-      threshold: definition.threshold ?? 3,
-      priority: definition.priority ?? CATEGORY_PRIORITY.get(category) || 0
+      hostWeight: firstDefined(definition.hostWeight, 3),
+      pathWeight: firstDefined(definition.pathWeight, 1.5),
+      titleWeight: firstDefined(definition.titleWeight, 2),
+      threshold: firstDefined(definition.threshold, 3),
+      priority: firstDefined(definition.priority, CATEGORY_PRIORITY.get(category)) || 0
     });
   }
   return map;
@@ -1747,9 +1757,12 @@ function scoreCategory(tabInfo) {
     if (score >= config.threshold) {
       matches.sort((a, b) => b.weight - a.weight);
       const adjusted = score + (config.priority || 0) * 0.01;
+      const bestConfig = best.category ? KEYWORD_MAP.get(best.category) : null;
+      const bestPriority =
+        bestConfig && bestConfig.priority !== null && bestConfig.priority !== undefined ? bestConfig.priority : 0;
       if (
         adjusted > best.score ||
-        (Math.abs(adjusted - best.score) < 0.0001 && (config.priority || 0) > (KEYWORD_MAP.get(best.category)?.priority || 0))
+        (Math.abs(adjusted - best.score) < 0.0001 && (config.priority || 0) > bestPriority)
       ) {
         best = {
           category,
@@ -1858,7 +1871,8 @@ function findNearestCategory(name, stats) {
   for (const entry of stats.values()) {
     if (entry.name === name || entry.count === 0) continue;
     const score = computeCategorySimilarity(name, entry.name);
-    if (score > bestScore || (score === bestScore && entry.count > (best?.count || 0))) {
+    const currentBestCount = best ? best.count : 0;
+    if (score > bestScore || (score === bestScore && entry.count > currentBestCount)) {
       best = entry;
       bestScore = score;
     }
@@ -1877,8 +1891,10 @@ function computeCategorySimilarity(a, b) {
       score += Math.min(configA.keywords.get(keyword) || 1, configB.keywords.get(keyword) || 1);
     }
   }
-  if (CATEGORY_NEIGHBORS.get(a)?.includes(b)) score += 0.5;
-  if (CATEGORY_NEIGHBORS.get(b)?.includes(a)) score += 0.5;
+    const neighborsA = CATEGORY_NEIGHBORS.get(a);
+    if (Array.isArray(neighborsA) && neighborsA.includes(b)) score += 0.5;
+    const neighborsB = CATEGORY_NEIGHBORS.get(b);
+    if (Array.isArray(neighborsB) && neighborsB.includes(a)) score += 0.5;
   return score;
 }
 
@@ -1905,8 +1921,10 @@ function sortTabIdsByIndex(tabIds, assignments) {
   return tabIds
     .slice()
     .sort((a, b) => {
-      const infoA = assignments.get(a)?.info;
-      const infoB = assignments.get(b)?.info;
+      const assignmentA = assignments.get(a);
+      const assignmentB = assignments.get(b);
+      const infoA = assignmentA ? assignmentA.info : null;
+      const infoB = assignmentB ? assignmentB.info : null;
       const indexA = infoA ? infoA.tab.index : 0;
       const indexB = infoB ? infoB.tab.index : 0;
       return indexA - indexB;
@@ -1922,7 +1940,8 @@ function buildCategoryDiagnostic(assignment) {
     diag.rule = assignment.rule;
   }
   if (assignment.method === 'keyword') {
-    diag.score = Number(assignment.score?.toFixed(2) || 0);
+    const hasScore = typeof assignment.score === 'number';
+    diag.score = hasScore ? Number(assignment.score.toFixed(2)) : 0;
     if (assignment.keywords && assignment.keywords.length) {
       diag.keywords = assignment.keywords.map((item) => item.keyword);
     }
@@ -1984,7 +2003,8 @@ function selectTargetRecord(candidate, records) {
       if (record.origin === 'category') {
         score = computeCategorySimilarity(candidate.name, record.name);
       }
-      if (score > bestScore || (score === bestScore && record.tabIds.length > (best?.tabIds.length || 0))) {
+      const bestLength = best ? best.tabIds.length : 0;
+      if (score > bestScore || (score === bestScore && record.tabIds.length > bestLength)) {
         best = record;
         bestScore = score;
       }
