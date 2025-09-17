@@ -1,6 +1,6 @@
-# Tab Organizer AI
+#  AI Tab Organizer
 
-Tab Organizer AI is a Manifest V3 Chrome extension that keeps the current browser window under control. It removes duplicate tabs, builds meaningful Chrome tab groups, and can do it either with your own OpenAI API key or with a deterministic offline mode. The project is intentionally lightweight—plain HTML, CSS, and JavaScript—so you can inspect, customize, and ship it quickly.
+AI Tab Organizer is a Manifest V3 Chrome extension that keeps the current browser window under control. It removes duplicate tabs, builds meaningful Chrome tab groups, and can do it either with your own OpenAI API key or with a deterministic offline mode. The project is intentionally lightweight—plain HTML, CSS, and JavaScript—so you can inspect, customize, and ship it quickly.
 
 ![Alt text](/TabOrgAI.png)
 
@@ -21,7 +21,7 @@ Tab Organizer AI is a Manifest V3 Chrome extension that keeps the current browse
 
 ## Configuration
 
-1. In Chrome's extensions list, open **Details** for Tab Organizer AI and click **Extension options**.
+1. In Chrome's extensions list, open **Details** for AI Tab Organizer and click **Extension options**.
 2. Enter your OpenAI API key (starts with `sk-`) and optionally choose a model (default: `gpt-4o-mini`).
 3. Review the organizer preferences:
    - Keep at least one tab per domain.
