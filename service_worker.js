@@ -134,16 +134,32 @@ async function handleOrganizeTabsNoLLM(message) {
     keepAtLeastOnePerDomain: preferences.keepAtLeastOnePerDomain !== false
   });
 
-  const groupingPlan = groupByRules(dedupePlan.survivors, {
+  const groupingMap = groupByRules(dedupePlan.survivors, {
     userRules,
     maxTabsPerGroup: preferences.maxTabsPerGroup,
     preservePinned: preferences.preservePinned !== false
   });
 
+  const survivorLookup = new Map(dedupePlan.survivors.map((tab) => [tab.id, tab]));
+  const colorMap = groupingMap.colors instanceof Map ? groupingMap.colors : new Map();
+  const groupingArray = Array.from(groupingMap.entries()).map(([name, tabIds]) => {
+    const tabsDetailed = tabIds
+      .map((id) => survivorLookup.get(id))
+      .filter(Boolean)
+      .map((tab) => ({ id: tab.id, title: tab.title, url: tab.url }));
+    return {
+      name,
+      tabIds: tabIds.slice(),
+      color: colorMap.get(name) || null,
+      tabs: tabsDetailed
+    };
+  });
+
+  const summary = groupingArray.map((group) => ({ name: group.name, count: group.tabIds.length, color: group.color }));
   const closedPlanned = dedupePlan.tabsToClose.filter((item) => typeof item.id === 'number');
   const statusMessage = buildNoLlmStatus({
     closedCount: closedPlanned.length,
-    groupCount: groupingPlan.groups.length,
+    groupCount: groupingArray.length,
     dryRun
   });
 
@@ -152,7 +168,7 @@ async function handleOrganizeTabsNoLLM(message) {
       success: true,
       dryRun: true,
       closed: closedPlanned.length,
-      groups: groupingPlan.summary,
+      groups: summary,
       message: statusMessage,
       plan: {
         duplicates: dedupePlan.tabsToClose.map((item) => ({
@@ -161,9 +177,9 @@ async function handleOrganizeTabsNoLLM(message) {
           url: item.url,
           duplicateOf: item.duplicateOf
         })),
-        groups: groupingPlan.groups.map((group) => ({
+        groups: groupingArray.map((group) => ({
           name: group.name,
-          color: group.color || null,
+          color: group.color,
           count: group.tabIds.length,
           tabs: group.tabs
         }))
@@ -171,7 +187,7 @@ async function handleOrganizeTabsNoLLM(message) {
     };
   }
 
-  const applyResult = await applyNoLlmPlan(currentWindow.id, dedupePlan, groupingPlan, {
+  const applyResult = await applyNoLlmPlan(currentWindow.id, dedupePlan, groupingArray, {
     preservePinned: preferences.preservePinned !== false
   });
 
@@ -324,10 +340,10 @@ async function applyPlan(plan) {
  * Apply deterministic dedupe and grouping results for the no-LLM path.
  * @param {number} windowId
  * @param {{ tabsToClose: Array<{id:number}>, survivors: any[] }} dedupePlan
- * @param {{ groups: Array<{ name: string, tabIds: number[], color?: string }> }} groupingPlan
+ * @param {Array<{ name: string, tabIds: number[], color?: string|null }>} groupingArray
  * @param {{ preservePinned?: boolean }} options
  */
-async function applyNoLlmPlan(windowId, dedupePlan, groupingPlan, options = {}) {
+async function applyNoLlmPlan(windowId, dedupePlan, groupingArray, options = {}) {
   const preservePinned = options.preservePinned !== false;
   const currentTabs = await chrome.tabs.query({ windowId });
   const tabMap = new Map(currentTabs.map((tab) => [tab.id, tab]));
@@ -353,7 +369,7 @@ async function applyNoLlmPlan(windowId, dedupePlan, groupingPlan, options = {}) 
   const assigned = new Set();
   const appliedGroups = [];
 
-  for (const group of groupingPlan.groups) {
+  for (const group of groupingArray) {
     const candidateIds = [];
     for (const tabId of group.tabIds) {
       const tab = postRemovalMap.get(tabId);
