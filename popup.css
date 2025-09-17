@@ -428,6 +428,10 @@ textarea:disabled {
   -webkit-backdrop-filter: blur(22px);
 }
 
+.preview-panel[hidden] {
+  display: none !important;
+}
+
 .preview-panel h2 {
   margin: 0;
   font-size: 1.05rem;
