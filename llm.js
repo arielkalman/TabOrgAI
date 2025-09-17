@@ -64,11 +64,13 @@ export async function requestChatCompletion(params) {
  * @returns {string}
  */
 export function extractMessageContent(completion) {
-  const choice = completion?.choices?.[0];
+  const choices = completion && Array.isArray(completion.choices) ? completion.choices : [];
+  const choice = choices[0];
   if (!choice) {
     throw new Error('Unexpected OpenAI response format.');
   }
-  const content = choice.message?.content;
+  const message = choice.message ? choice.message : null;
+  const content = message && typeof message.content === 'string' ? message.content : undefined;
   if (typeof content !== 'string' || !content.trim()) {
     throw new Error('OpenAI response did not include content.');
   }

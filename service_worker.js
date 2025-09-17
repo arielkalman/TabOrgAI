@@ -12,7 +12,10 @@ import {
 
 const RATE_LIMIT_INTERVAL_MS = 5000;
 const PREVIEW_TTL_MS = 5 * 60 * 1000;
-const TAB_GROUP_ID_NONE = chrome.tabGroups?.TAB_GROUP_ID_NONE ?? -1;
+const TAB_GROUP_ID_NONE =
+  chrome.tabGroups && typeof chrome.tabGroups.TAB_GROUP_ID_NONE === 'number'
+    ? chrome.tabGroups.TAB_GROUP_ID_NONE
+    : -1;
 
 const DEFAULT_SYNC_SETTINGS = {
   apiKey: '',
