@@ -91,10 +91,17 @@ form.addEventListener('submit', async (event) => {
     }
 
     if (response.preview) {
+      const hasPlannedChanges = renderPreview(response.summary);
+
+      if (!hasPlannedChanges) {
+        resetPreview();
+        setStatus(response.message || 'No planned changes to review.');
+        return;
+      }
+
       previewToken = response.token;
       awaitingConfirmation = true;
       previewPromptValue = prompt;
-      renderPreview(response.summary);
       setStatus(response.message || 'Review the plan and confirm.');
       llmButton.textContent = 'Apply plan';
       return;
@@ -147,7 +154,10 @@ noLlmButton.addEventListener('click', async () => {
     setStatus(response.message || '');
 
     if (response.dryRun && response.plan) {
-      renderPreview(convertPlanToPreview(response.plan));
+      const hasPlannedChanges = renderPreview(convertPlanToPreview(response.plan));
+      if (!hasPlannedChanges) {
+        resetPreview();
+      }
     }
   } catch (error) {
     console.error('Popup no-LLM organize error', error);
@@ -247,9 +257,10 @@ function setStatus(message) {
 }
 
 function renderPreview(summary) {
+  hidePreviewPanel();
+
   if (!summary) {
-    resetPreview();
-    return;
+    return false;
   }
 
   const closingItems = Array.isArray(summary.closing) ? summary.closing : [];
@@ -258,13 +269,11 @@ function renderPreview(summary) {
   const hasClosing = closingItems.length > 0;
   const hasGrouping = groupingItems.length > 0;
   const hasNotes = notesText.length > 0;
+  const hasActionableChanges = hasClosing || hasGrouping;
 
-  if (!hasClosing && !hasGrouping && !hasNotes) {
-    resetPreview();
-    return;
+  if (!hasActionableChanges) {
+    return false;
   }
-
-  previewContent.innerHTML = '';
 
   if (hasClosing) {
     const closingSection = document.createElement('div');
@@ -314,14 +323,19 @@ function renderPreview(summary) {
   }
 
   previewSection.hidden = false;
+  return true;
+}
+
+function hidePreviewPanel() {
+  previewSection.hidden = true;
+  previewContent.innerHTML = '';
 }
 
 function resetPreview() {
   awaitingConfirmation = false;
   previewToken = null;
   previewPromptValue = '';
-  previewSection.hidden = true;
-  previewContent.innerHTML = '';
+  hidePreviewPanel();
   llmButton.textContent = 'Organize (LLM)';
   noLlmButton.textContent = 'Organize (No-LLM)';
 }
