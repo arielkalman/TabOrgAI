@@ -179,6 +179,7 @@ textarea:disabled {
 }
 
 .primary-actions .glass-button {
+  flex: 0 0 auto;
   width: 100%;
 }
 
