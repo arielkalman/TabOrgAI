@@ -7,26 +7,33 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <main>
-      <h1>Organize tabs</h1>
-      <form id="organize-form">
-        <label for="organize-input">Tell me how to organize</label>
-        <textarea
-          id="organize-input"
-          name="prompt"
-          rows="4"
-          placeholder="e.g., Group by project and close social media duplicates"
-        ></textarea>
-        <div class="button-row">
-          <button type="submit" id="organize-llm">Organize (LLM)</button>
-          <button type="button" id="organize-nollm">Organize (No-LLM)</button>
+    <main class="glass-panel">
+      <header class="panel-header">
+        <h1>Organize tabs</h1>
+      </header>
+      <form id="organize-form" class="organize-form">
+        <div class="field">
+          <label for="organize-input">Tell me how to organize</label>
+          <textarea
+            id="organize-input"
+            name="prompt"
+            rows="4"
+            placeholder="e.g., Group by project and close social media duplicates"
+          ></textarea>
         </div>
-        <label class="checkbox-inline" for="dryRunNoLLM">
+        <div class="button-row">
+          <button type="submit" id="organize-llm" class="glass-button accent">Organize (LLM)</button>
+          <button type="button" id="organize-nollm" class="glass-button outline">Organize (No-LLM)</button>
+        </div>
+        <label class="toggle-control" for="dryRunNoLLM">
           <input type="checkbox" id="dryRunNoLLM" name="dryRunNoLLM" />
-          Dry-run (No-LLM)
+          <span class="toggle-track" aria-hidden="true">
+            <span class="toggle-thumb"></span>
+          </span>
+          <span class="toggle-label">Dry-run (No-LLM)</span>
         </label>
       </form>
-      <section id="preview" hidden>
+      <section id="preview" class="preview-panel" hidden>
         <h2>Planned changes</h2>
         <div id="preview-content"></div>
       </section>
